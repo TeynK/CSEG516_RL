@@ -1,398 +1,218 @@
 # envs/splendor_wrapper.py
-
-"""
-PettingZoo AECEnv Wrapper for the SplendorGame engine.
-
-This file translates the object-oriented SplendorGame state into
-fixed-size NumPy arrays (observation and action mask) suitable
-for deep reinforcement learning agents.
-"""
-
-import copy
-import itertools
-import dataclasses
-from typing import Dict, List, Tuple, Any, Optional
-from collections import defaultdict
-
 import numpy as np
 import gymnasium as gym
-from gymnasium.spaces import Box, Discrete # GymDict 제거
+from typing import Tuple, Dict, Any, Optional
+from gymnasium.spaces import Box, Discrete
 from pettingzoo.utils.env import AECEnv
 from pettingzoo.utils import agent_selector
-from pettingzoo.utils.conversions import to_parallel
+from collections import defaultdict
+import itertools
+import copy
 
-# --- Import from our custom game engine ---
-from gem_sp.game import SplendorGame
-from gem_sp.constants import (
-    GemColor,
-    CARD_LEVELS,
-    FACE_UP_CARDS_PER_LEVEL,
-    MAX_RESERVED_CARDS,
-    SETUP_CONFIG,
-    MAX_PLAYERS,
-    WINNING_SCORE
-)
-from gem_sp.actions import Action, ActionType
-from gem_sp.card import DevelopmentCard, NobleTile
-
-# --- Helper functions for PettingZoo ---
+from splendor_game.game import SplendorGame
+from splendor_game.constants import GemColor, CARD_LEVELS, FACE_UP_CARDS_PER_LEVEL, MAX_RESERVED_CARDS, WINNING_SCORE, MAX_PLAYERS, SETUP_CONFIG
+from splendor_game.actions import Action, ActionType
+from splendor_game.card import DevelopmentCard, CostDict, NobleTile
 
 def env(**kwargs):
-    """AECEnv 래퍼 헬퍼"""
     internal_env = SplendorEnv(**kwargs)
     return internal_env
 
 def raw_env(**kwargs):
-    """래퍼 없는 순수 AECEnv 반환"""
     return SplendorEnv(**kwargs)
 
 class SplendorEnv(AECEnv):
-    """
-    PettingZoo AECEnv 인터페이스로 SplendorGame 엔진을 래핑합니다.
-
-    관측(Observation):
-    - 1D NumPy 벡터로 평탄화됩니다.
-    - (현재 플레이어 상태, 1번 상대 상태, ..., N번 상대 상태, 보드 상태)
-    
-    행동(Action):
-    - 하나의 정수(Integer)로 매핑됩니다.
-    - 총 143개의 고정된 행동으로 구성됩니다. (기본 60 + 보석 반납 83)
-    - 유효한 행동은 'action_mask'로 제공됩니다.
-    """
-    
     metadata = {
         "name": "splendor_v0",
         "render_modes": ["human"],
         "is_parallelizable": True,
     }
-
-    # --- 1. 초기화 및 공간 정의 ---
-
     def __init__(self, num_players=2, render_mode=None):
         super().__init__()
-
         if not (2 <= num_players <= 4):
-            raise ValueError(f"플레이어 수는 2에서 4 사이여야 합니다. (입력: {num_players})")
-        
+            raise ValueError(f"Invalid number of players: {num_players}")
         self.num_players = num_players
         self.render_mode = render_mode
-
-        # 1. 코어 게임 엔진 인스턴스 생성
         self.game = SplendorGame(num_players=self.num_players)
-
-        # 2. 에이전트 설정
         self.agents = [f"player_{i}" for i in range(self.num_players)]
         self.possible_agents = self.agents[:]
         self._agent_selector = agent_selector(self.agents)
-
-        # 3. 상태 저장 변수 (AECEnv 표준)
         self.rewards = {agent: 0.0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {} for agent in self.agents} # <<< api_test가 마스크를 찾을 위치
+        self.infos = {agent: {} for agent in self.agents}
         self.agent_selection: str = ""
-        
-        # --- 4. 행동 공간 정의 ---
-        # (int -> Action 객체) / (Action 객체 식별자 -> int) 맵 생성
-        (
-            self.action_map_int_to_obj,
-            self.action_map_obj_to_int
-        ) = self._create_action_maps()
-        
-        self.TOTAL_ACTIONS = len(self.action_map_int_to_obj) # 총 143개
-
-        self.action_spaces = {
-            agent: Discrete(self.TOTAL_ACTIONS) for agent in self.agents
-        }
-
-        # --- 5. 관측 공간 정의 ---
-        self._gem_colors_all = GemColor.get_all_gems() # 6 (standard + gold)
-        self._gem_colors_standard = GemColor.get_standard_gems() # 5
-        
-        # Noble/Card 특징 벡터 크기 계산
-        self._card_feature_size = 1 + 1 + len(self._gem_colors_standard) + len(self._gem_colors_all) # level, points, bonus(one-hot), cost(6) = 13
-        self._noble_feature_size = 1 + len(self._gem_colors_standard) # points, cost(5) = 6
-        
-        # 최대 플레이어 수(4) 기준으로 공간을 고정 (padding)
-        self._max_nobles = SETUP_CONFIG[MAX_PLAYERS]['nobles']
-
+        self.action_map_int_to_obj, self.action_map_obj_to_int = self._create_action_maps()
+        self.TOTAL_ACTIONS = len(self.action_map_int_to_obj)
+        self.action_spaces = {agent: Discrete(self.TOTAL_ACTIONS) for agent in self.agents}
+        self._gem_colors_all = GemColor.get_all_gems()
+        self._gem_colors_standard = GemColor.get_standard_gems()
+        self._card_feature_size = 2 + len(self._gem_colors_all) + len(self._gem_colors_standard)
+        self._noble_feature_size = 1 + len(self._gem_colors_standard)
+        self._max_nobles =  SETUP_CONFIG[MAX_PLAYERS]['nobles']
         self.OBS_VECTOR_SIZE = self._calculate_obs_size()
-
-        # api_test가 이 순수 Box 공간을 선호합니다.
-        self.observation_spaces = {
-            agent: Box(
-                    low=0, high=1.0, shape=(self.OBS_VECTOR_SIZE,), dtype=np.float32
-                )
-            for agent in self.agents
-        }
+        self.observation_spaces = {agent: Box(low=0, high=1.0, shape=(self.OBS_VECTOR_SIZE,), dtype=np.float32) for agent in self.agents}
 
     def _create_action_maps(self) -> Tuple[Dict[int, Action], Dict[Any, int]]:
-        """
-        모든 143개의 가능한 행동에 대해 (정수 <-> Action 객체) 매핑을 생성합니다.
-        
-        - 10 (Take 3 - 3 gems): 5C3
-        - 10 (Take 3 - 2 gems): 5C2
-        - 5  (Take 3 - 1 gem): 5C1
-        - 5  (Take 2): 5C1
-        - 12 (Buy Face-up): 3 levels * 4 slots
-        - 3  (Buy Reserved): 3 slots
-        - 12 (Reserve Face-up): 3 levels * 4 slots
-        - 3  (Reserve Deck): 3 levels
-        (여기까지 60개)
-        --- NEW: Return Gems (최대 3개 반납) ---
-        - 6  (Return 1 Gem): 6C1 (모든 6색)
-        - 21 (Return 2 Gems):
-            - 6 (Return 2 of same): 6C1
-            - 15 (Return 1 of two): 6C2
-        - 56 (Return 3 Gems):
-            - 6 (Return 3 of same)
-            - 30 (Return 2 of one, 1 of another: 6*5)
-            - 20 (Return 1 of three: 6C3)
-        Total = 60 + 6 + 21 + 56 = 143
-        """
         int_to_obj: Dict[int, Action] = {}
         obj_to_int: Dict[Any, int] = {}
         idx = 0
-
         standard_gems = GemColor.get_standard_gems()
-
-        # --- 1. Take 3 (모든 조합: 10 + 10 + 5 = 25 actions) ---
-        # 1-1. 3개 가져오기 (10 actions)
-        for combo in itertools.combinations(standard_gems, 3):
-            gems = {c: 1 for c in combo}
-            action = Action(ActionType.TAKE_THREE_GEMS, gems=gems)
-            int_to_obj[idx] = action
-            key = (ActionType.TAKE_THREE_GEMS, frozenset(combo))
-            obj_to_int[key] = idx 
-            idx += 1
-            
-        # 1-2. 2개 가져오기 (10 actions)
-        for combo in itertools.combinations(standard_gems, 2):
-            gems = {c: 1 for c in combo}
-            action = Action(ActionType.TAKE_THREE_GEMS, gems=gems)
-            int_to_obj[idx] = action
-            key = (ActionType.TAKE_THREE_GEMS, frozenset(combo))
-            obj_to_int[key] = idx 
-            idx += 1
-
-        # 1-3. 1개 가져오기 (5 actions)
-        for combo in itertools.combinations(standard_gems, 1):
-            gems = {c: 1 for c in combo}
-            action = Action(ActionType.TAKE_THREE_GEMS, gems=gems)
-            int_to_obj[idx] = action
-            key = (ActionType.TAKE_THREE_GEMS, frozenset(combo))
-            obj_to_int[key] = idx 
-            idx += 1
-
-        # 2. Take 2 (5 actions)
+        for k in [3, 2, 1]:
+            for combo in itertools.combinations(standard_gems, k):
+                gems = {c: 1 for c in combo}
+                action = Action(ActionType.TAKE_THREE_GEMS, gems=gems)
+                int_to_obj[idx] = action
+                key = (ActionType.TAKE_THREE_GEMS, frozenset(combo))
+                obj_to_int[key] = idx
+                idx += 1
         for color in standard_gems:
             gems = {color: 2}
             action = Action(ActionType.TAKE_TWO_GEMS, gems=gems)
             int_to_obj[idx] = action
-            key = (ActionType.TAKE_TWO_GEMS, color) # (TAKE_TWO, GemColor.RED)
-            obj_to_int[key] = idx 
+            key = (ActionType.TAKE_TWO_GEMS, color)
+            obj_to_int[key] = idx
             idx += 1
-
-        # 3. Buy Face-up (12 actions)
         for level in CARD_LEVELS:
             for index in range(FACE_UP_CARDS_PER_LEVEL):
-                action = Action(ActionType.BUY_CARD, level=level, index=index)
+                action = Action(ActionType.BUY_CARD, level=level, index=index, is_reserved_buy=False)
                 int_to_obj[idx] = action
                 key = (ActionType.BUY_CARD, level, index, False)
-                obj_to_int[key] = idx 
+                obj_to_int[key] = idx
                 idx += 1
-        
-        # 4. Buy Reserved (3 actions)
         for index in range(MAX_RESERVED_CARDS):
             action = Action(ActionType.BUY_CARD, index=index, is_reserved_buy=True)
             int_to_obj[idx] = action
             key = (ActionType.BUY_CARD, None, index, True)
             obj_to_int[key] = idx
             idx += 1
-
-        # 5. Reserve Face-up (12 actions)
         for level in CARD_LEVELS:
             for index in range(FACE_UP_CARDS_PER_LEVEL):
-                action = Action(ActionType.RESERVE_CARD, level=level, index=index)
+                action = Action(ActionType.RESERVE_CARD, level=level, index=index, is_deck_reserve=False)
                 int_to_obj[idx] = action
                 key = (ActionType.RESERVE_CARD, level, index, False)
                 obj_to_int[key] = idx
                 idx += 1
-
-        # 6. Reserve Deck (3 actions)
         for level in CARD_LEVELS:
             action = Action(ActionType.RESERVE_CARD, level=level, is_deck_reserve=True)
             int_to_obj[idx] = action
             key = (ActionType.RESERVE_CARD, level, None, True)
             obj_to_int[key] = idx
             idx += 1
-        
-        # --- (여기까지 60개) ---
-        
-        # <<< NEW: 7, 8, 9. Return Gems (83 actions) >>>
-        all_gem_colors = GemColor.get_all_gems() # 6색 (골드 포함)
-        
-        # 7. Return 1 Gem (6 actions)
-        for color in all_gem_colors:
-            gems = {color: 1}
-            action = Action(ActionType.RETURN_GEMS, gems=gems)
-            int_to_obj[idx] = action
-            # 키: (액션타입, frozenset({(GemColor.WHITE, 1)}))
-            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
-            obj_to_int[key] = idx
-            idx += 1
-            
-        # 8. Return 2 Gems (21 actions)
-        # 8a. 2 of the same color (6 actions)
-        for color in all_gem_colors:
-            gems = {color: 2}
+        all_gem_colors = GemColor.get_all_gems()
+        for combo in itertools.combinations(all_gem_colors, 1):
+            gems = {combo[0]: 1}
             action = Action(ActionType.RETURN_GEMS, gems=gems)
             int_to_obj[idx] = action
             key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
             obj_to_int[key] = idx
             idx += 1
-            
-        # 8b. 1 each of two different colors (15 actions)
-        for combo in itertools.combinations(all_gem_colors, 2):
-            gems = {combo[0]: 1, combo[1]: 1}
+        for combo in itertools.combinations_with_replacement(all_gem_colors, 2):
+            gems = defaultdict(int)
+            for color in combo:
+                gems[color] += 1
             action = Action(ActionType.RETURN_GEMS, gems=gems)
             int_to_obj[idx] = action
             key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
             obj_to_int[key] = idx
             idx += 1
-
-        # 9. Return 3 Gems (56 actions)
-        # 9a. 3 of the same color (6 actions)
-        for color in all_gem_colors:
-            gems = {color: 3}
+        for combo in itertools.combinations_with_replacement(all_gem_colors, 3):
+            gems = defaultdict(int)
+            for color in combo:
+                gems[color] += 1
             action = Action(ActionType.RETURN_GEMS, gems=gems)
             int_to_obj[idx] = action
             key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
             obj_to_int[key] = idx
             idx += 1
-
-        # 9b. 2 of one, 1 of another (30 actions)
-        # (itertools.permutations 사용)
-        for color1, color2 in itertools.permutations(all_gem_colors, 2):
-            # (W, U) -> {W: 2, U: 1}
-            gems = {color1: 2, color2: 1}
-            action = Action(ActionType.RETURN_GEMS, gems=gems)
-            int_to_obj[idx] = action
-            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
-            obj_to_int[key] = idx
-            idx += 1
-
-        # 9c. 1 each of three different colors (20 actions)
-        # (itertools.combinations 사용)
-        for combo in itertools.combinations(all_gem_colors, 3):
-            gems = {combo[0]: 1, combo[1]: 1, combo[2]: 1}
-            action = Action(ActionType.RETURN_GEMS, gems=gems)
-            int_to_obj[idx] = action
-            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
-            obj_to_int[key] = idx
-            idx += 1
-
         assert idx == 143, f"총 행동 개수가 143이 아닙니다: {idx}"
         return int_to_obj, obj_to_int
 
     def _calculate_obs_size(self) -> int:
-        """관측 벡터(1D)의 총 크기를 계산합니다."""
-        
         size = 0
-        
-        # 1. 플레이어 상태 (x 최대 4명, 패딩 포함)
         player_state_size = 0
-        player_state_size += len(self._gem_colors_all) # 보유 보석 (6)
-        player_state_size += len(self._gem_colors_standard) # 보너스 (5)
-        player_state_size += 1 # 점수
-        player_state_size += 1 # 예약 카드 수
-        player_state_size += MAX_RESERVED_CARDS * self._card_feature_size # 예약 카드 특징 (3 * 13)
-        
+        player_state_size += len(self._gem_colors_all)
+        player_state_size += len(self._gem_colors_standard)
+        player_state_size += 1
+        player_state_size += 1
+        player_state_size += MAX_RESERVED_CARDS * self._card_feature_size
         size += MAX_PLAYERS * player_state_size
-
-        # 2. 보드 상태
-        size += len(self._gem_colors_all) # 보드 보석 스택 (6)
-        size += len(CARD_LEVELS) # 덱 남은 카드 수 (3)
-        size += self._max_nobles * self._noble_feature_size # 귀족 타일 특징 (5 * 6)
-        size += (3 * 4) * self._card_feature_size # 공개 카드 특징 (12 * 13)
-
+        size += len(self._gem_colors_all)
+        size += len(CARD_LEVELS)
+        size += self._max_nobles * self._noble_feature_size
+        size += (3 * 4) * self._card_feature_size
         return size
-
-    # --- 2. 핵심 메서드: observe, step, reset ---
-
+    
+    def _encode_card(self, obs: np.ndarray, idx: int, card: DevelopmentCard) -> int:
+        obs[idx] = card.level / 3.0
+        idx += 1
+        obs[idx] = card.points / 5.0
+        idx += 1
+        try:
+            bonus_idx = self._gem_colors_standard.index(card.gem_type)
+            obs[idx + bonus_idx] = 1.0
+        except ValueError:
+            pass 
+        idx += len(self._gem_colors_standard)
+        for color in self._gem_colors_all:
+            obs[idx] = card.cost.get(color, 0) / 7.0
+            idx += 1
+        return idx
+    
+    def _encode_noble(self, obs: np.ndarray, idx: int, noble: NobleTile) -> int:
+        obs[idx] = noble.points / 3.0
+        idx += 1
+        for color in self._gem_colors_standard:
+            obs[idx] = noble.cost.get(color, 0) / 4.0 
+            idx += 1
+        return idx
+        
     def _get_obs_vector(self, player_id: int) -> np.ndarray:
-        """
-        현재 게임 상태를 player_id 에이전트의 관점에서 1D 벡터로 변환합니다.
-        항상 (현재 플레이어, 다음 플레이어, ...) 순서로 정렬됩니다.
-        """
         obs = np.zeros(self.OBS_VECTOR_SIZE, dtype=np.float32)
         idx = 0
         game = self.game
-
-        # --- 1. 플레이어 상태 (항상 4명분 공간) ---
         player_order = [(player_id + i) % self.num_players for i in range(self.num_players)]
-        
-        player_state_size_per_player = 0 # 1인당 벡터 크기 (패딩 계산용)
-
+        player_state_size_per_player = 0
         for i, pid in enumerate(player_order):
             player = game.players[pid]
             player_start_idx = idx
-            
-            # 1-1. 보유 보석 (6)
             for color in self._gem_colors_all:
-                obs[idx] = player.gems[color] / 10.0 # 정규화 (최대 10개+)
+                obs[idx] = player.gems[color] / 10.0
                 idx += 1
-            # 1-2. 보너스 (5)
             for color in self._gem_colors_standard:
-                obs[idx] = player.bonuses[color] / 15.0 # 정규화 (15점=15개?)
+                obs[idx] = player.bonuses[color] / 15.0
                 idx += 1
-                
-            # 1-3. 점수 (1)
-            obs[idx] = min(1.0, player.score / WINNING_SCORE) # 정규화 (1.0 초과 방지)
+            obs[idx] = min(1.0, player.score / WINNING_SCORE)
             idx += 1
-            
-            # 1-4. 예약 카드 수 (1)
             obs[idx] = len(player.reserved_cards) / MAX_RESERVED_CARDS
             idx += 1
-            
-            # 1-5. 예약 카드 특징 (3 * 13) - 패딩 포함
             for j in range(MAX_RESERVED_CARDS):
                 if j < len(player.reserved_cards):
                     card = player.reserved_cards[j]
                     idx = self._encode_card(obs, idx, card)
                 else:
-                    idx += self._card_feature_size # 빈 슬롯 스킵
-            
+                    idx += self._card_feature_size
             if i == 0:
                 player_state_size_per_player = idx - player_start_idx
-
-
-        # 비어있는 플레이어 슬롯 패딩 (e.g., 2인플 시 2명분)
         unused_player_slots = MAX_PLAYERS - self.num_players
         idx += unused_player_slots * player_state_size_per_player
-
-        # --- 2. 보드 상태 ---
-        # 2-1. 보드 보석 스택 (6)
-        for color in self._gem_colors_all:
-            obs[idx] = game.board.gem_stacks[color] / 7.0 # 정규화 (최대 7개)
+        max_gems_on_board = SETUP_CONFIG[4]['gems'] 
+        for color in self._gem_colors_standard:
+            obs[idx] = game.board.gem_stacks[color] / max_gems_on_board
             idx += 1
-        
-        # 2-2. 덱 남은 카드 수 (3)
+        obs[idx] = game.board.gem_stacks[GemColor.GOLD] / SETUP_CONFIG[4]['gold']
+        idx += 1
         max_deck_sizes = {1: 40, 2: 30, 3: 20}
         for level in CARD_LEVELS:
             obs[idx] = len(game.board.decks[level]) / max_deck_sizes[level]
             idx += 1
-            
-        # 2-3. 귀족 타일 (최대 5 * 6) - 패딩 포함
         for i in range(self._max_nobles):
             if i < len(game.board.nobles):
                 noble = game.board.nobles[i]
                 idx = self._encode_noble(obs, idx, noble)
             else:
-                idx += self._noble_feature_size # 빈 슬롯 스킵
-                
-        # 2-4. 공개 카드 (12 * 13) - 패딩 포함
+                idx += self._noble_feature_size
         for level in CARD_LEVELS:
             for i in range(FACE_UP_CARDS_PER_LEVEL):
                 card = game.board.face_up_cards[level][i]
@@ -403,38 +223,7 @@ class SplendorEnv(AECEnv):
         
         assert idx == self.OBS_VECTOR_SIZE, f"관측 벡터 크기 불일치: {idx} != {self.OBS_VECTOR_SIZE}"
         return obs
-
-    def _encode_card(self, obs: np.ndarray, idx: int, card: DevelopmentCard) -> int:
-        """obs 벡터에 카드 1장의 특징(13)을 인코딩하고 다음 인덱스를 반환"""
-        # 1. Level (1)
-        obs[idx] = card.level / 3.0
-        idx += 1
-        # 2. Points (1)
-        obs[idx] = card.points / 5.0
-        idx += 1
-        # 3. Bonus (one-hot, 5)
-        bonus_idx = self._gem_colors_standard.index(card.gem_type)
-        obs[idx + bonus_idx] = 1.0
-        idx += 5
-        # 4. Cost (6)
-        for color in self._gem_colors_all:
-            obs[idx] = card.cost.get(color, 0) / 7.0 # (L3 최대 7)
-            idx += 1
-        return idx
-
-    def _encode_noble(self, obs: np.ndarray, idx: int, noble: NobleTile) -> int:
-        """obs 벡터에 귀족 1장의 특징(6)을 인코딩하고 다음 인덱스를 반환"""
-        # 1. Points (1)
-        obs[idx] = noble.points / 3.0
-        idx += 1
-        # 2. Cost (5)
-        for color in self._gem_colors_standard:
-            obs[idx] = noble.cost.get(color, 0) / 4.0 # (최대 4)
-            idx += 1
-        return idx
-        
     def _get_action_mask(self) -> np.ndarray:
-        """현재 플레이어의 유효한 행동 마스크(143)를 생성합니다."""
         mask = np.zeros(self.TOTAL_ACTIONS, dtype=np.int8)
         legal_actions = self.game.get_legal_actions()
 
@@ -448,43 +237,27 @@ class SplendorEnv(AECEnv):
                 key = (ActionType.BUY_CARD, action.level, action.index, action.is_reserved_buy)
             elif action.action_type == ActionType.RESERVE_CARD:
                 key = (ActionType.RESERVE_CARD, action.level, action.index, action.is_deck_reserve)
-            
             elif action.action_type == ActionType.RETURN_GEMS:
                 key = (ActionType.RETURN_GEMS, frozenset(action.gems.items()))
             
-            # <<< MODIFIED: 여기가 수정된 지점입니다! >>>
             if key in self.action_map_obj_to_int:
                 int_idx = self.action_map_obj_to_int[key]
                 mask[int_idx] = 1
             else:
-                # 이 경고가 뜨면 _create_action_maps의 키 정의 로직에 문제
                 print(f"[경고] 유효한 행동 {action}을 정수 인덱스로 변환할 수 없습니다. (키: {key})")
                 
         return mask
 
     def observe(self, agent: str) -> np.ndarray:
-        """
-        AECEnv: 현재 에이전트의 관측(np.ndarray)을 반환합니다.
-        액션 마스크는 self.infos[agent]에 저장하여 api_test가 찾도록 합니다.
-        """
         player_id = self.agents.index(agent)
         observation = self._get_obs_vector(player_id)
-        
-        # api_test는 env.last()를 호출하며, info 딕셔너리에서 'action_mask'를 찾습니다.
-        # 따라서 self.infos 딕셔너리를 업데이트해야 합니다.
         if agent == self.agent_selection:
-            # <<< MODIFIED: infos[agent]가 비어있을 수 있으므로 안전하게 업데이트 >>>
-            if agent not in self.infos:
-                self.infos[agent] = {}
             self.infos[agent]["action_mask"] = self._get_action_mask()
         
         return observation
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> None:
-        """AECEnv: 환경을 초기화합니다."""
-        self.game.reset()
-
-        # PettingZoo 상태 초기화
+        self.game.reset() 
         self.agents = self.possible_agents[:]
         self._agent_selector.reinit(self.agents)
         self.agent_selection = self._agent_selector.next()
@@ -493,134 +266,86 @@ class SplendorEnv(AECEnv):
         self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {} for agent in self.agents} # 초기화
+        self.infos = {agent: {} for agent in self.agents}
 
     def step(self, action: int) -> None:
-        """
-        AECEnv: 에이전트가 선택한 정수(action)를 실행합니다.
-        """
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
-            # <<< MODIFIED: _was_dead_step은 agent_selection을 변경하므로, 
-            # infos[agent]를 업데이트하기 전에 호출해야 함 >>>
             self._was_dead_step(action)
             return
 
         current_agent = self.agent_selection
         current_player_id = self.agents.index(current_agent)
         player = self.game.players[current_player_id]
-
-        # --- 1. 정수 -> Action 객체 변환 ---
-        
-        # <<< MODIFIED: api_test가 observe()를 호출하며 infos를 채웠으므로, 
-        #               이제 self.infos에서 마스크를 가져와야 합니다. >>>
-        #               (observe()가 step() 전에 항상 호출된다는 PettingZoo 보장)
         current_mask = self.infos[current_agent].get("action_mask")
         
-        # 비상시(observe가 호출되지 않았을 경우) 마스크 재생성
         if current_mask is None:
             print(f"[경고] {current_agent}의 infos에 action_mask가 없습니다. 재생성합니다.")
             current_mask = self._get_action_mask()
             self.infos[current_agent]["action_mask"] = current_mask
-
         if current_mask[action] == 0:
             print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Invalid action submitted."
-            # <<< MODIFIED: 잘못된 행동 시에도 다음 에이전트로 넘겨야 함 >>>
             self.agent_selection = self._agent_selector.next()
             return
-
+        
         template_action = self.action_map_int_to_obj[action]
         final_action = copy.deepcopy(template_action)
-
         try:
             if template_action.action_type == ActionType.BUY_CARD:
                 card_to_buy = None
                 if template_action.is_reserved_buy:
-                    if template_action.index >= len(player.reserved_cards):
-                        raise IndexError("예약된 카드 인덱스 오류")
                     card_to_buy = player.reserved_cards[template_action.index]
                 else:
                     card_to_buy = self.game.board.face_up_cards[template_action.level][template_action.index]
-                
                 if card_to_buy is None:
                     raise ValueError("구매하려는 카드가 비어있습니다 (None).")
-
-                final_action = Action(
-                    action_type=template_action.action_type,
-                    level=template_action.level,
-                    index=template_action.index,
-                    is_reserved_buy=template_action.is_reserved_buy,
-                    card=card_to_buy
-                )
+                final_action.card = card_to_buy
 
             elif template_action.action_type == ActionType.RESERVE_CARD:
                 if not template_action.is_deck_reserve:
                     card_to_reserve = self.game.board.face_up_cards[template_action.level][template_action.index]
                     if card_to_reserve is None:
                         raise ValueError("예약하려는 카드가 비어있습니다 (None).")
-                    
-                    final_action = Action(
-                        action_type=template_action.action_type,
-                        level=template_action.level,
-                        index=template_action.index,
-                        is_deck_reserve=template_action.is_deck_reserve,
-                        card=card_to_reserve
-                    )
+                    final_action.card = card_to_reserve
         
-        # <<< MODIFIED: 더 구체적인 예외 처리 >>>
         except (IndexError, ValueError, TypeError) as e:
-            # (디버깅) 예약된 카드가 없는데 예약 구매를 시도하는 등
             print(f"[오류] Action 객체 생성 중 오류: {template_action} (오류: {e})")
             self.truncations = {agent: True for agent in self.agents}
-            self.infos[current_agent]["error"] = "Invalid action object creation"
+            self.infos[current_agent]["error"] = "Action object creation error"
             self.agent_selection = self._agent_selector.next()
             return
-        
-        # --- 2. 게임 엔진 실행 ---
+
         is_game_over = self.game.step(final_action)
-
-        # --- 3. 다음 에이전트 선택 ---
         self.agent_selection = self._agent_selector.next()
-
-        # --- 4. 보상 및 종료 상태 업데이트 ---
         self.rewards = {agent: 0.0 for agent in self.agents}
-
         if is_game_over:
             self.terminations = {agent: True for agent in self.agents}
             winner_id = self.game.winner_id
-            
             for i, agent in enumerate(self.agents):
                 if i == winner_id:
-                    self.rewards[agent] = 1.0
+                    self.rewards[agent] = 1.0 
                 else:
                     self.rewards[agent] = -1.0
-            
-            # infos는 모든 에이전트에 대해 업데이트
             for agent in self.agents:
                 self.infos[agent] = {"game_winner": winner_id}
-        
         for agent in self.agents:
             self._cumulative_rewards[agent] += self.rewards[agent]
-
         if self.render_mode == "human":
             self.render()
 
     def render(self) -> None:
-        """(선택 사항) 터미널에 현재 상태 출력"""
         if self.render_mode == "human":
             current_player = self.game.get_current_player()
             print("\n" + "="*60)
             print(f"--- 턴: {self.game.current_player_index}, "
-                  f"현재 에이전트: player_{current_player.player_id} ({self.game.current_game_state}) ---")
+                  f"현재 에이전트: player_{current_player.player_id} ({self.game.current_player_state}) ---")
             print(self.game.board)
             for i in range(self.num_players):
                 player = self.game.players[i]
                 print(player)
             print("="*60)
 
-    # --- PettingZoo 필수 프로퍼티 ---
-    
     def action_space(self, agent: str) -> Discrete:
         return self.action_spaces[agent]
 

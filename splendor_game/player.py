@@ -3,11 +3,7 @@
 from typing import List
 from collections import defaultdict
 
-from .constants import (
-    GemColor,
-    MAX_GEMS_PER_PLAYER,
-    MAX_RESERVED_CARDS
-)
+from .constants import GemColor, MAX_RESERVED_CARDS
 from .card import DevelopmentCard, NobleTile, CostDict
 
 class Player:

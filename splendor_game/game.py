@@ -5,7 +5,7 @@ from typing import List, Optional
 from collections import defaultdict
 
 from .constants import GemColor, WINNING_SCORE, MAX_GEMS_PER_PLAYER
-from .card import DevelopmentCard, NobleTile, CostDict
+from .card import DevelopmentCard
 from .board import Board
 from .player import Player
 from .actions import Action, ActionType, get_legal_actions, get_legal_return_gems_actions
