@@ -91,10 +91,12 @@ def main():
             # 2. Get legal actions
             legal_actions = game.get_legal_actions()
             
-            # TODO: Handle the "Return Gems" state
-            # As noted in game.py, if a player has > 10 gems,
-            # get_legal_actions() should return *only* return-gem actions.
-            # This test script assumes the simple action path for now.
+            # <<< MODIFIED: Handle the "Return Gems" state >>>
+            if game.current_game_state == "RETURN_GEMS":
+                print("\n" + "!"*50)
+                print(f"!!! PLAYER {game.get_current_player().player_id} MUST RETURN GEMS. "
+                      f"(Total: {game.get_current_player().get_total_gems()})")
+                print("!"*50)
             
             # 3. Get player choice
             chosen_action = get_player_input(legal_actions)

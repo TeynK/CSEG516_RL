@@ -16,15 +16,14 @@ from collections import defaultdict
 
 import numpy as np
 import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, Dict as GymDict
+from gymnasium.spaces import Box, Discrete # GymDict 제거
 from pettingzoo.utils.env import AECEnv
 from pettingzoo.utils import agent_selector
 from pettingzoo.utils.conversions import to_parallel
 
 # --- Import from our custom game engine ---
-# (이 import 경로는 splendor_rl_project/ 최상위에서 실행하는 것을 기준)
-from splendor_game.game import SplendorGame
-from splendor_game.constants import (
+from gem_sp.game import SplendorGame
+from gem_sp.constants import (
     GemColor,
     CARD_LEVELS,
     FACE_UP_CARDS_PER_LEVEL,
@@ -33,17 +32,14 @@ from splendor_game.constants import (
     MAX_PLAYERS,
     WINNING_SCORE
 )
-from splendor_game.actions import Action, ActionType
-from splendor_game.card import DevelopmentCard, NobleTile
+from gem_sp.actions import Action, ActionType
+from gem_sp.card import DevelopmentCard, NobleTile
 
 # --- Helper functions for PettingZoo ---
 
 def env(**kwargs):
     """AECEnv 래퍼 헬퍼"""
     internal_env = SplendorEnv(**kwargs)
-    # PPO/DQN은 병렬 API를 선호하는 경우가 많으므로 to_parallel을 적용할 수 있습니다.
-    # (단, PPO/DQN 트레이너에서 직접 병렬 환경을 관리한다면 원본 AECEnv 사용)
-    # internal_env = to_parallel(internal_env)
     return internal_env
 
 def raw_env(**kwargs):
@@ -60,7 +56,7 @@ class SplendorEnv(AECEnv):
     
     행동(Action):
     - 하나의 정수(Integer)로 매핑됩니다.
-    - 총 45개의 고정된 행동으로 구성됩니다.
+    - 총 143개의 고정된 행동으로 구성됩니다. (기본 60 + 보석 반납 83)
     - 유효한 행동은 'action_mask'로 제공됩니다.
     """
     
@@ -94,7 +90,7 @@ class SplendorEnv(AECEnv):
         self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {} for agent in self.agents}
+        self.infos = {agent: {} for agent in self.agents} # <<< api_test가 마스크를 찾을 위치
         self.agent_selection: str = ""
         
         # --- 4. 행동 공간 정의 ---
@@ -104,7 +100,7 @@ class SplendorEnv(AECEnv):
             self.action_map_obj_to_int
         ) = self._create_action_maps()
         
-        self.TOTAL_ACTIONS = len(self.action_map_int_to_obj) # 총 45개
+        self.TOTAL_ACTIONS = len(self.action_map_int_to_obj) # 총 143개
 
         self.action_spaces = {
             agent: Discrete(self.TOTAL_ACTIONS) for agent in self.agents
@@ -123,21 +119,17 @@ class SplendorEnv(AECEnv):
 
         self.OBS_VECTOR_SIZE = self._calculate_obs_size()
 
+        # api_test가 이 순수 Box 공간을 선호합니다.
         self.observation_spaces = {
-            agent: GymDict({
-                "observation": Box(
+            agent: Box(
                     low=0, high=1.0, shape=(self.OBS_VECTOR_SIZE,), dtype=np.float32
-                ),
-                "action_mask": Box(
-                    low=0, high=1, shape=(self.TOTAL_ACTIONS,), dtype=np.int8
                 )
-            })
             for agent in self.agents
         }
 
     def _create_action_maps(self) -> Tuple[Dict[int, Action], Dict[Any, int]]:
         """
-        모든 60개의 가능한 행동에 대해 (정수 <-> Action 객체) 매핑을 생성합니다.
+        모든 143개의 가능한 행동에 대해 (정수 <-> Action 객체) 매핑을 생성합니다.
         
         - 10 (Take 3 - 3 gems): 5C3
         - 10 (Take 3 - 2 gems): 5C2
@@ -147,7 +139,17 @@ class SplendorEnv(AECEnv):
         - 3  (Buy Reserved): 3 slots
         - 12 (Reserve Face-up): 3 levels * 4 slots
         - 3  (Reserve Deck): 3 levels
-        Total = 60
+        (여기까지 60개)
+        --- NEW: Return Gems (최대 3개 반납) ---
+        - 6  (Return 1 Gem): 6C1 (모든 6색)
+        - 21 (Return 2 Gems):
+            - 6 (Return 2 of same): 6C1
+            - 15 (Return 1 of two): 6C2
+        - 56 (Return 3 Gems):
+            - 6 (Return 3 of same)
+            - 30 (Return 2 of one, 1 of another: 6*5)
+            - 20 (Return 1 of three: 6C3)
+        Total = 60 + 6 + 21 + 56 = 143
         """
         int_to_obj: Dict[int, Action] = {}
         obj_to_int: Dict[Any, int] = {}
@@ -156,8 +158,6 @@ class SplendorEnv(AECEnv):
         standard_gems = GemColor.get_standard_gems()
 
         # --- 1. Take 3 (모든 조합: 10 + 10 + 5 = 25 actions) ---
-        # (행동 타입, frozenset)을 키로 사용하여 TAKE_THREE의 하위 조합을 구분
-        
         # 1-1. 3개 가져오기 (10 actions)
         for combo in itertools.combinations(standard_gems, 3):
             gems = {c: 1 for c in combo}
@@ -227,8 +227,73 @@ class SplendorEnv(AECEnv):
             key = (ActionType.RESERVE_CARD, level, None, True)
             obj_to_int[key] = idx
             idx += 1
+        
+        # --- (여기까지 60개) ---
+        
+        # <<< NEW: 7, 8, 9. Return Gems (83 actions) >>>
+        all_gem_colors = GemColor.get_all_gems() # 6색 (골드 포함)
+        
+        # 7. Return 1 Gem (6 actions)
+        for color in all_gem_colors:
+            gems = {color: 1}
+            action = Action(ActionType.RETURN_GEMS, gems=gems)
+            int_to_obj[idx] = action
+            # 키: (액션타입, frozenset({(GemColor.WHITE, 1)}))
+            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
+            obj_to_int[key] = idx
+            idx += 1
+            
+        # 8. Return 2 Gems (21 actions)
+        # 8a. 2 of the same color (6 actions)
+        for color in all_gem_colors:
+            gems = {color: 2}
+            action = Action(ActionType.RETURN_GEMS, gems=gems)
+            int_to_obj[idx] = action
+            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
+            obj_to_int[key] = idx
+            idx += 1
+            
+        # 8b. 1 each of two different colors (15 actions)
+        for combo in itertools.combinations(all_gem_colors, 2):
+            gems = {combo[0]: 1, combo[1]: 1}
+            action = Action(ActionType.RETURN_GEMS, gems=gems)
+            int_to_obj[idx] = action
+            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
+            obj_to_int[key] = idx
+            idx += 1
 
-        assert idx == 60, f"총 행동 개수가 60이 아닙니다: {idx}"
+        # 9. Return 3 Gems (56 actions)
+        # 9a. 3 of the same color (6 actions)
+        for color in all_gem_colors:
+            gems = {color: 3}
+            action = Action(ActionType.RETURN_GEMS, gems=gems)
+            int_to_obj[idx] = action
+            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
+            obj_to_int[key] = idx
+            idx += 1
+
+        # 9b. 2 of one, 1 of another (30 actions)
+        # (itertools.permutations 사용)
+        for color1, color2 in itertools.permutations(all_gem_colors, 2):
+            # (W, U) -> {W: 2, U: 1}
+            gems = {color1: 2, color2: 1}
+            action = Action(ActionType.RETURN_GEMS, gems=gems)
+            int_to_obj[idx] = action
+            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
+            obj_to_int[key] = idx
+            idx += 1
+
+        # 9c. 1 each of three different colors (20 actions)
+        # (itertools.combinations 사용)
+        for combo in itertools.combinations(all_gem_colors, 3):
+            gems = {combo[0]: 1, combo[1]: 1, combo[2]: 1}
+            action = Action(ActionType.RETURN_GEMS, gems=gems)
+            int_to_obj[idx] = action
+            key = (ActionType.RETURN_GEMS, frozenset(gems.items()))
+            obj_to_int[key] = idx
+            idx += 1
+
+        assert idx == 143, f"총 행동 개수가 143이 아닙니다: {idx}"
         return int_to_obj, obj_to_int
 
     def _calculate_obs_size(self) -> int:
@@ -252,13 +317,6 @@ class SplendorEnv(AECEnv):
         size += self._max_nobles * self._noble_feature_size # 귀족 타일 특징 (5 * 6)
         size += (3 * 4) * self._card_feature_size # 공개 카드 특징 (12 * 13)
 
-        # 2인플 기준 (예시):
-        # player_state = 6 + 5 + 1 + 1 + (3*13) = 13 + 39 = 52
-        # (2명 플레이어지만 4명분 공간 할당) 4 * 52 = 208
-        # board_state = 6 (gems) + 3 (decks) + (5*6) (nobles) + (12*13) (cards)
-        #             = 6 + 3 + 30 + 156 = 195
-        # Total = 208 + 195 = 403
-        
         return size
 
     # --- 2. 핵심 메서드: observe, step, reset ---
@@ -283,7 +341,7 @@ class SplendorEnv(AECEnv):
             
             # 1-1. 보유 보석 (6)
             for color in self._gem_colors_all:
-                obs[idx] = player.gems[color] / 10.0 # 정규화 (최대 10개)
+                obs[idx] = player.gems[color] / 10.0 # 정규화 (최대 10개+)
                 idx += 1
             # 1-2. 보너스 (5)
             for color in self._gem_colors_standard:
@@ -291,7 +349,6 @@ class SplendorEnv(AECEnv):
                 idx += 1
                 
             # 1-3. 점수 (1)
-            # *** 수정: min(1.0, ...) 클리핑 추가 ***
             obs[idx] = min(1.0, player.score / WINNING_SCORE) # 정규화 (1.0 초과 방지)
             idx += 1
             
@@ -377,24 +434,25 @@ class SplendorEnv(AECEnv):
         return idx
         
     def _get_action_mask(self) -> np.ndarray:
-        """현재 플레이어의 유효한 행동 마스크(60)를 생성합니다."""
-        # *** 수정: TOTAL_ACTIONS -> 60 ***
+        """현재 플레이어의 유효한 행동 마스크(143)를 생성합니다."""
         mask = np.zeros(self.TOTAL_ACTIONS, dtype=np.int8)
         legal_actions = self.game.get_legal_actions()
 
         for action in legal_actions:
             key: Any = None
             if action.action_type == ActionType.TAKE_THREE_GEMS:
-                # *** 수정: 1, 2, 3개 조합 모두 처리 ***
                 key = (ActionType.TAKE_THREE_GEMS, frozenset(action.gems.keys()))
             elif action.action_type == ActionType.TAKE_TWO_GEMS:
-                # *** 수정: (Type, Color) 튜플로 키 변경 ***
                 key = (ActionType.TAKE_TWO_GEMS, list(action.gems.keys())[0])
             elif action.action_type == ActionType.BUY_CARD:
                 key = (ActionType.BUY_CARD, action.level, action.index, action.is_reserved_buy)
             elif action.action_type == ActionType.RESERVE_CARD:
                 key = (ActionType.RESERVE_CARD, action.level, action.index, action.is_deck_reserve)
             
+            elif action.action_type == ActionType.RETURN_GEMS:
+                key = (ActionType.RETURN_GEMS, frozenset(action.gems.items()))
+            
+            # <<< MODIFIED: 여기가 수정된 지점입니다! >>>
             if key in self.action_map_obj_to_int:
                 int_idx = self.action_map_obj_to_int[key]
                 mask[int_idx] = 1
@@ -404,26 +462,26 @@ class SplendorEnv(AECEnv):
                 
         return mask
 
-    def observe(self, agent: str) -> Dict[str, np.ndarray]:
-        """AECEnv: 현재 에이전트의 관측을 반환합니다."""
+    def observe(self, agent: str) -> np.ndarray:
+        """
+        AECEnv: 현재 에이전트의 관측(np.ndarray)을 반환합니다.
+        액션 마스크는 self.infos[agent]에 저장하여 api_test가 찾도록 합니다.
+        """
         player_id = self.agents.index(agent)
         observation = self._get_obs_vector(player_id)
         
-        # 현재 턴인 에이전트에게만 유효한 액션 마스크 제공
+        # api_test는 env.last()를 호출하며, info 딕셔너리에서 'action_mask'를 찾습니다.
+        # 따라서 self.infos 딕셔너리를 업데이트해야 합니다.
         if agent == self.agent_selection:
-            action_mask = self._get_action_mask()
-        else:
-            action_mask = np.zeros(self.TOTAL_ACTIONS, dtype=np.int8)
-            
-        return {"observation": observation, "action_mask": action_mask}
+            # <<< MODIFIED: infos[agent]가 비어있을 수 있으므로 안전하게 업데이트 >>>
+            if agent not in self.infos:
+                self.infos[agent] = {}
+            self.infos[agent]["action_mask"] = self._get_action_mask()
+        
+        return observation
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> None:
         """AECEnv: 환경을 초기화합니다."""
-        # (참고: PettingZoo는 seed() 메서드를 별도로 호출하는 것을 권장하지만,
-        #  gymnasium 스타일로 reset에 seed를 포함하는 것도 일반적임)
-        # if seed is not None:
-        #     self.seed(seed)
-
         self.game.reset()
 
         # PettingZoo 상태 초기화
@@ -435,46 +493,59 @@ class SplendorEnv(AECEnv):
         self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
-        self.infos = {agent: {} for agent in self.agents}
+        self.infos = {agent: {} for agent in self.agents} # 초기화
 
     def step(self, action: int) -> None:
         """
         AECEnv: 에이전트가 선택한 정수(action)를 실행합니다.
         """
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
-            # 이미 종료된 에이전트의 행동은 스킵
-            return self._was_dead_step(action)
+            # <<< MODIFIED: _was_dead_step은 agent_selection을 변경하므로, 
+            # infos[agent]를 업데이트하기 전에 호출해야 함 >>>
+            self._was_dead_step(action)
+            return
 
         current_agent = self.agent_selection
         current_player_id = self.agents.index(current_agent)
         player = self.game.players[current_player_id]
 
         # --- 1. 정수 -> Action 객체 변환 ---
-        if self._get_action_mask()[action] == 0:
-            # (디버깅) 에이전트가 유효하지 않은 행동을 선택함
+        
+        # <<< MODIFIED: api_test가 observe()를 호출하며 infos를 채웠으므로, 
+        #               이제 self.infos에서 마스크를 가져와야 합니다. >>>
+        #               (observe()가 step() 전에 항상 호출된다는 PettingZoo 보장)
+        current_mask = self.infos[current_agent].get("action_mask")
+        
+        # 비상시(observe가 호출되지 않았을 경우) 마스크 재생성
+        if current_mask is None:
+            print(f"[경고] {current_agent}의 infos에 action_mask가 없습니다. 재생성합니다.")
+            current_mask = self._get_action_mask()
+            self.infos[current_agent]["action_mask"] = current_mask
+
+        if current_mask[action] == 0:
             print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
-            
-            # *** 수정: 잘못된 행동 시, 게임을 비정상 종료(Truncation)시킴 ***
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Invalid action submitted."
-            # 행동을 실행하지 않고 즉시 반환
+            # <<< MODIFIED: 잘못된 행동 시에도 다음 에이전트로 넘겨야 함 >>>
+            self.agent_selection = self._agent_selector.next()
             return
 
         template_action = self.action_map_int_to_obj[action]
-        # 정수로부터 얻은 템플릿 Action에는 실제 카드 객체가 포함되어 있지 않으므로,
-        # BUY/RESERVE 액션의 경우 카드 객체를 포함한 새로운 Action 인스턴스를 생성합니다.
         final_action = copy.deepcopy(template_action)
 
         try:
             if template_action.action_type == ActionType.BUY_CARD:
                 card_to_buy = None
                 if template_action.is_reserved_buy:
-                    # 예약된 카드 구매
+                    if template_action.index >= len(player.reserved_cards):
+                        raise IndexError("예약된 카드 인덱스 오류")
                     card_to_buy = player.reserved_cards[template_action.index]
                 else:
-                    # 공개된 카드 구매
                     card_to_buy = self.game.board.face_up_cards[template_action.level][template_action.index]
                 
+                if card_to_buy is None:
+                    raise ValueError("구매하려는 카드가 비어있습니다 (None).")
+
                 final_action = Action(
                     action_type=template_action.action_type,
                     level=template_action.level,
@@ -484,9 +555,11 @@ class SplendorEnv(AECEnv):
                 )
 
             elif template_action.action_type == ActionType.RESERVE_CARD:
-                # 덱에서 예약하는 경우는 card 객체가 필요 없음
                 if not template_action.is_deck_reserve:
                     card_to_reserve = self.game.board.face_up_cards[template_action.level][template_action.index]
+                    if card_to_reserve is None:
+                        raise ValueError("예약하려는 카드가 비어있습니다 (None).")
+                    
                     final_action = Action(
                         action_type=template_action.action_type,
                         level=template_action.level,
@@ -494,12 +567,14 @@ class SplendorEnv(AECEnv):
                         is_deck_reserve=template_action.is_deck_reserve,
                         card=card_to_reserve
                     )
-        except IndexError:
+        
+        # <<< MODIFIED: 더 구체적인 예외 처리 >>>
+        except (IndexError, ValueError, TypeError) as e:
             # (디버깅) 예약된 카드가 없는데 예약 구매를 시도하는 등
-            print(f"[오류] Action 객체 생성 중 오류: {template_action}")
-            # 이 경우 게임을 비정상 종료시킴
+            print(f"[오류] Action 객체 생성 중 오류: {template_action} (오류: {e})")
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Invalid action object creation"
+            self.agent_selection = self._agent_selector.next()
             return
         
         # --- 2. 게임 엔진 실행 ---
@@ -509,11 +584,9 @@ class SplendorEnv(AECEnv):
         self.agent_selection = self._agent_selector.next()
 
         # --- 4. 보상 및 종료 상태 업데이트 ---
-        # 턴 기반 보상 (0)
         self.rewards = {agent: 0.0 for agent in self.agents}
 
         if is_game_over:
-            # 게임 종료: 승/패에 따라 보상 분배
             self.terminations = {agent: True for agent in self.agents}
             winner_id = self.game.winner_id
             
@@ -521,23 +594,25 @@ class SplendorEnv(AECEnv):
                 if i == winner_id:
                     self.rewards[agent] = 1.0
                 else:
-                    self.rewards[agent] = -1.0 # (또는 0.0)
+                    self.rewards[agent] = -1.0
             
-            self.infos = {agent: {"game_winner": winner_id} for agent in self.agents}
+            # infos는 모든 에이전트에 대해 업데이트
+            for agent in self.agents:
+                self.infos[agent] = {"game_winner": winner_id}
         
-        # 누적 보상 업데이트
         for agent in self.agents:
             self._cumulative_rewards[agent] += self.rewards[agent]
 
-        # 5. 렌더링
         if self.render_mode == "human":
             self.render()
 
     def render(self) -> None:
         """(선택 사항) 터미널에 현재 상태 출력"""
         if self.render_mode == "human":
+            current_player = self.game.get_current_player()
             print("\n" + "="*60)
-            print(f"--- 턴: {self.game.current_player_index}, 현재 에이전트: {self.agent_selection} ---")
+            print(f"--- 턴: {self.game.current_player_index}, "
+                  f"현재 에이전트: player_{current_player.player_id} ({self.game.current_game_state}) ---")
             print(self.game.board)
             for i in range(self.num_players):
                 player = self.game.players[i]
@@ -549,7 +624,7 @@ class SplendorEnv(AECEnv):
     def action_space(self, agent: str) -> Discrete:
         return self.action_spaces[agent]
 
-    def observation_space(self, agent: str) -> GymDict:
+    def observation_space(self, agent: str) -> Box:
         return self.observation_spaces[agent]
     
     def close(self) -> None:
