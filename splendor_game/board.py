@@ -29,7 +29,7 @@ class Board:
         self.nobles: List[NobleTile] = load_noble_tiles()[:config['nobles']]
 
     def draw_card_from_deck(self, level: int) -> Optional[DevelopmentCard]:
-        return self.decks[level].pop if self.decks[level] else None
+        return self.decks[level].pop() if self.decks[level] else None
     
     def replace_face_up_card(self, level: int, index: int) -> None:
         self.face_up_cards[level][index] = self.draw_card_from_deck(level)

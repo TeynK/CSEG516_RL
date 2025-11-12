@@ -8,7 +8,7 @@ from .constants import GemColor, WINNING_SCORE, MAX_GEMS_PER_PLAYER
 from .card import DevelopmentCard, NobleTile, CostDict
 from .board import Board
 from .player import Player
-from .actions import Action, ActionType, get_legal_actions
+from .actions import Action, ActionType, get_legal_actions, get_legal_return_gems_actions
 
 class SplendorGame:
     def __init__(self, num_players: int):
@@ -33,7 +33,11 @@ class SplendorGame:
         if self.game_over:
             return []
         player = self.get_current_player()
-        return get_legal_actions(self.board, player)
+        if self.current_player_state == "RETURN_GEMS":
+            return get_legal_return_gems_actions(player)
+        if self.current_player_state == "NORMAL":
+            return get_legal_actions(self.board, player)
+        return []
 
     def step(self, action: Action) -> bool:
         if self.game_over:
@@ -53,25 +57,28 @@ class SplendorGame:
             if player.get_total_gems() > MAX_GEMS_PER_PLAYER:
                 self.current_player_state = "RETURN_GEMS"
                 advance_turn = False
-        if advance_turn:
-            self.next_turn()
-        
+        elif action.action_type == ActionType.RETURN_GEMS:
+            self.execute_return_gems(player, action)
+            self.current_player_state = "NORMAL"
+            advance_turn = True
         if self.last_round_player_index is None:
             if player.score >= WINNING_SCORE:
-                self.last_round_player_index = (self.current_player_index - 1 + self.num_players) % self.num_players
-        self.next_turn()
-        if self.last_round_player_index == self.current_player_index:
+                self.last_round_player_index = self.current_player_index
+        if advance_turn:
+            self.next_turn()
+        if self.last_round_player_index is not None and self.current_player_index == self.last_round_player_index:
             self.game_over = True
             self.determine_winner()
         return self.game_over
     
 
-
-
-
     def execute_take_gems(self, player: Player, action: Action) -> None:
         self.board.take_gems(action.gems)
         player.add_gems(action.gems)
+
+    def execute_return_gems(self, player: Player, action: Action) -> None:
+        player.remove_gems(action.gems)
+        self.board.return_gems(action.gems)
     
     def execute_buy_card(self, player: Player, action: Action) -> None:
         card = action.card

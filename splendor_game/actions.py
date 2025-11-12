@@ -4,8 +4,9 @@ import itertools
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Optional
+from collections import Counter
 
-from .constants import GemColor, CARD_LEVELS
+from .constants import GemColor, CARD_LEVELS, MAX_GEMS_PER_PLAYER
 from .card import DevelopmentCard, CostDict
 from .board import Board
 from .player import Player
@@ -50,6 +51,10 @@ class Action:
 
 def get_legal_actions(board: Board, player: Player) -> List[Action]:
     legal_actions: List[Action] = []
+    legal_actions.extend(get_legal_gem_actions(board))
+    legal_actions.extend(get_legal_buy_actions(board, player))
+    legal_actions.extend(get_legal_reserve_actions(board, player))
+    return legal_actions
 
 def get_legal_gem_actions(board: Board) -> List[Action]:
     actions: List[Action] = []
@@ -94,4 +99,20 @@ def get_legal_reserve_actions(board: Board, player: Player) -> List[Action]:
     for level in CARD_LEVELS:
         if board.decks[level]:
             actions.append(Action(action_type=ActionType.RESERVE_CARD, level=level, is_deck_reserve=True))
+    return actions
+
+def get_legal_return_gems_actions(player: Player) -> List[Action]:
+    total_gems = player.get_total_gems()
+    gems_to_return_count = total_gems - MAX_GEMS_PER_PLAYER
+    if gems_to_return_count <= 0:
+        return []
+    actions: List[Action] = []
+    gem_pool = []
+    for color, count in player.gems.items():
+        if count > 0:
+            gem_pool.extend([color] * count)
+    unique_gem_combos = set(itertools.combinations(gem_pool, gems_to_return_count))
+    for combo in unique_gem_combos:
+        gems_to_return_dict = CostDict(Counter(combo))
+        actions.append(Action(action_type=ActionType.RETURN_GEMS, gems=gems_to_return_dict))
     return actions
