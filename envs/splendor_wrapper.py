@@ -8,6 +8,7 @@ from pettingzoo.utils import agent_selector
 from collections import defaultdict
 import itertools
 import copy
+import dataclasses
 
 from splendor_game.game import SplendorGame
 from splendor_game.constants import GemColor, CARD_LEVELS, FACE_UP_CARDS_PER_LEVEL, MAX_RESERVED_CARDS, WINNING_SCORE, MAX_PLAYERS, SETUP_CONFIG
@@ -276,12 +277,7 @@ class SplendorEnv(AECEnv):
         current_agent = self.agent_selection
         current_player_id = self.agents.index(current_agent)
         player = self.game.players[current_player_id]
-        current_mask = self.infos[current_agent].get("action_mask")
-        
-        if current_mask is None:
-            print(f"[경고] {current_agent}의 infos에 action_mask가 없습니다. 재생성합니다.")
-            current_mask = self._get_action_mask()
-            self.infos[current_agent]["action_mask"] = current_mask
+        current_mask = self._get_action_mask()
         if current_mask[action] == 0:
             print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
             self.truncations = {agent: True for agent in self.agents}
@@ -290,7 +286,7 @@ class SplendorEnv(AECEnv):
             return
         
         template_action = self.action_map_int_to_obj[action]
-        final_action = copy.deepcopy(template_action)
+        final_action = template_action
         try:
             if template_action.action_type == ActionType.BUY_CARD:
                 card_to_buy = None
@@ -300,14 +296,14 @@ class SplendorEnv(AECEnv):
                     card_to_buy = self.game.board.face_up_cards[template_action.level][template_action.index]
                 if card_to_buy is None:
                     raise ValueError("구매하려는 카드가 비어있습니다 (None).")
-                final_action.card = card_to_buy
+                final_action = dataclasses.replace(template_action, card=card_to_buy)
 
             elif template_action.action_type == ActionType.RESERVE_CARD:
                 if not template_action.is_deck_reserve:
                     card_to_reserve = self.game.board.face_up_cards[template_action.level][template_action.index]
                     if card_to_reserve is None:
                         raise ValueError("예약하려는 카드가 비어있습니다 (None).")
-                    final_action.card = card_to_reserve
+                    final_action = dataclasses.replace(template_action, card=card_to_reserve)
         
         except (IndexError, ValueError, TypeError) as e:
             print(f"[오류] Action 객체 생성 중 오류: {template_action} (오류: {e})")
@@ -315,6 +311,19 @@ class SplendorEnv(AECEnv):
             self.infos[current_agent]["error"] = "Action object creation error"
             self.agent_selection = self._agent_selector.next()
             return
+
+        if final_action.action_type == ActionType.BUY_CARD:
+            can_afford, _ = player.get_payment_details(final_action.card)
+            if not can_afford:
+                print("\n--- DEBUG: POTENTIAL VALUE ERROR ---")
+                print(f"Agent: {current_agent}")
+                print(f"Action: {final_action}")
+                print(f"Card to buy: {final_action.card}")
+                print(f"Card cost: {final_action.card.cost}")
+                print(f"Player Gems: {player.gems}")
+                print(f"Player Bonuses: {player.bonuses}")
+                print(f"Calculated can_afford: {can_afford}")
+                print("--- END DEBUG ---\n")
 
         is_game_over = self.game.step(final_action)
         self.agent_selection = self._agent_selector.next()

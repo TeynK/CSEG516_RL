@@ -83,27 +83,35 @@ class SplendorGame:
     def execute_buy_card(self, player: Player, action: Action) -> None:
         card = action.card
         if card is None:
-            raise ValueError("Action (BUY_CARD) is missing a 'card' object.")
-        effective_cost = player.calculate_effective_cost(card)
-        gems_to_spend = defaultdict(int)
-        shortfall = 0
-        for color, cost in effective_cost.items():
-            spend = min(player.gems[color], cost)
-            gems_to_spend[color] += spend
-            shortfall += max(0, cost - spend)
-        if shortfall > 0:
-            if player.gems[GemColor.GOLD] < shortfall:
-                raise ValueError("Player cannot afford card (not enough gold).")
-            gems_to_spend[GemColor.GOLD] += shortfall
+            if action.is_reserved_buy:
+                if action.index >= len(player.reserved_cards):
+                    raise ValueError("Invalid index for reserved card.")
+                card = player.reserved_cards[action.index]
+            else:
+                if action.level is None or action.index is None:
+                    raise ValueError("Action requires level and index to identify card.")
+                card = self.board.face_up_cards[action.level][action.index]
+        
+        if card is None:
+            raise ValueError("Card to be bought is not found.")
+
+        can_buy, gems_to_spend = player.get_payment_details(card)
+        if not can_buy:
+            raise ValueError("Player cannot afford the card.")
+        
         player.remove_gems(gems_to_spend)
         self.board.return_gems(gems_to_spend)
+        
         if action.is_reserved_buy:
-            card_to_remove = player.reserved_cards[action.index]
-            if card_to_remove != card:
-                raise ValueError("Card mismatch in reserved buy.")
-            player.reserved_cards.pop(action.index)
+            # Find the actual index of the card to remove, as action.index might be stale
+            # if another reserved card was bought previously in the same turn (not possible in current rules, but good practice).
+            for i, reserved_card in enumerate(player.reserved_cards):
+                if reserved_card == card:
+                    player.reserved_cards.pop(i)
+                    break
         else:
             self.board.replace_face_up_card(action.level, action.index)
+            
         player.add_card(card)
     
     def execute_reserve_card(self, player: Player, action: Action) -> None:

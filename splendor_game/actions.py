@@ -82,10 +82,10 @@ def get_legal_buy_actions(board: Board, player: Player) -> List[Action]:
     for level in CARD_LEVELS:
         for index, card in enumerate(board.face_up_cards[level]):
             if card is not None and player.can_afford(card):
-                actions.append(Action(action_type=ActionType.BUY_CARD, card=card, level=level, index=index,is_reserved_buy=False))
+                actions.append(Action(action_type=ActionType.BUY_CARD, level=level, index=index, is_reserved_buy=False))
     for index, card in enumerate(player.reserved_cards):
         if player.can_afford(card):
-            actions.append(Action(action_type=ActionType.BUY_CARD, card=card, index=index, is_reserved_buy=True))
+            actions.append(Action(action_type=ActionType.BUY_CARD, index=index, is_reserved_buy=True))
     return actions
 
 def get_legal_reserve_actions(board: Board, player: Player) -> List[Action]:
@@ -95,7 +95,7 @@ def get_legal_reserve_actions(board: Board, player: Player) -> List[Action]:
     for level in CARD_LEVELS:
         for index, card in enumerate(board.face_up_cards[level]):
             if card is not None:
-                actions.append(Action(action_type=ActionType.RESERVE_CARD, card=card, level=level, index=index, is_deck_reserve=False))
+                actions.append(Action(action_type=ActionType.RESERVE_CARD, level=level, index=index, is_deck_reserve=False))
     for level in CARD_LEVELS:
         if board.decks[level]:
             actions.append(Action(action_type=ActionType.RESERVE_CARD, level=level, is_deck_reserve=True))
@@ -113,6 +113,6 @@ def get_legal_return_gems_actions(player: Player) -> List[Action]:
             gem_pool.extend([color] * count)
     unique_gem_combos = set(itertools.combinations(gem_pool, gems_to_return_count))
     for combo in unique_gem_combos:
-        gems_to_return_dict = CostDict(Counter(combo))
+        gems_to_return_dict = dict(Counter(combo))
         actions.append(Action(action_type=ActionType.RETURN_GEMS, gems=gems_to_return_dict))
     return actions

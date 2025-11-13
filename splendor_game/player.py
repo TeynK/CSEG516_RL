@@ -1,6 +1,6 @@
 # splendor_game/player.py
 
-from typing import List
+from typing import List, Tuple
 from collections import defaultdict
 
 from .constants import GemColor, MAX_RESERVED_CARDS
@@ -49,16 +49,29 @@ class Player:
     def calculate_effective_cost(self, card: DevelopmentCard) -> CostDict:
         effective_cost = defaultdict(int)
         for color, cost in card.cost.items():
-            cost_after_bonus = max(0, cost - self.bonuses[color])
+            cost_after_bonus = max(0, cost - self.bonuses.get(color, 0))
             effective_cost[color] = cost_after_bonus
         return effective_cost
     
-    def can_afford(self, card: DevelopmentCard) -> bool:
+    def get_payment_details(self, card: DevelopmentCard) -> Tuple[bool, CostDict]:
         effective_cost = self.calculate_effective_cost(card)
+        gems_to_spend = defaultdict(int)
         shortfall = 0
         for color, cost in effective_cost.items():
-            shortfall += max(0, cost - self.gems[color])
-        return self.gems[GemColor.GOLD] >= shortfall
+            spend = min(self.gems.get(color, 0), cost)
+            gems_to_spend[color] = spend
+            shortfall += max(0, cost - spend)
+        
+        can_buy = self.gems.get(GemColor.GOLD, 0) >= shortfall
+        if can_buy:
+            gems_to_spend[GemColor.GOLD] += shortfall
+            return True, gems_to_spend
+        else:
+            return False, defaultdict(int)
+    
+    def can_afford(self, card: DevelopmentCard) -> bool:
+        can_buy, _ = self.get_payment_details(card)
+        return can_buy
     
     def __repr__(self) -> str:
         """Provides a simple text representation of the player's state."""
