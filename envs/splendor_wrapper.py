@@ -278,6 +278,7 @@ class SplendorEnv(AECEnv):
         current_player_id = self.agents.index(current_agent)
         player = self.game.players[current_player_id]
         current_mask = self._get_action_mask()
+        
         if current_mask[action] == 0:
             print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
             self.truncations = {agent: True for agent in self.agents}
@@ -287,15 +288,22 @@ class SplendorEnv(AECEnv):
         
         template_action = self.action_map_int_to_obj[action]
         final_action = template_action
+        is_game_over = False # is_game_over를 try 블록 밖에서 초기화
+
         try:
             if template_action.action_type == ActionType.BUY_CARD:
                 card_to_buy = None
                 if template_action.is_reserved_buy:
+                    # [수정] 인덱스 범위 검사 추가
+                    if template_action.index >= len(player.reserved_cards):
+                        raise IndexError(f"잘못된 예약 카드 인덱스: {template_action.index}")
                     card_to_buy = player.reserved_cards[template_action.index]
                 else:
                     card_to_buy = self.game.board.face_up_cards[template_action.level][template_action.index]
+                
                 if card_to_buy is None:
                     raise ValueError("구매하려는 카드가 비어있습니다 (None).")
+                
                 final_action = dataclasses.replace(template_action, card=card_to_buy)
 
             elif template_action.action_type == ActionType.RESERVE_CARD:
@@ -304,30 +312,41 @@ class SplendorEnv(AECEnv):
                     if card_to_reserve is None:
                         raise ValueError("예약하려는 카드가 비어있습니다 (None).")
                     final_action = dataclasses.replace(template_action, card=card_to_reserve)
-        
+
+            # --- [수정] affordability 검사 및 game.step() 호출을 try 블록 안으로 이동 ---
+
+            if final_action.action_type == ActionType.BUY_CARD:
+                can_afford, _ = player.get_payment_details(final_action.card)
+                if not can_afford:
+                    # 디버그 메시지 출력
+                    print("\n--- DEBUG: POTENTIAL VALUE ERROR ---")
+                    print(f"Agent: {current_agent}")
+                    print(f"Action: {final_action}")
+                    print(f"Card to buy: {final_action.card}")
+                    print(f"Card cost: {final_action.card.cost}")
+                    print(f"Player Gems: {player.gems}")
+                    print(f"Player Bonuses: {player.bonuses}")
+                    print(f"Calculated can_afford: {can_afford}")
+                    print("--- END DEBUG ---\n")
+                    
+                    # [수정] 에러를 발생시켜 except 블록에서 처리하도록 함
+                    raise ValueError("마스크와 실제 'can_afford' 상태가 일치하지 않습니다.")
+
+            # [수정] self.game.step() 호출을 try 블록 안으로 이동
+            is_game_over = self.game.step(final_action)
+
         except (IndexError, ValueError, TypeError) as e:
-            print(f"[오류] Action 객체 생성 중 오류: {template_action} (오류: {e})")
+            print(f"[오류] Action 객체 생성 또는 step 실행 중 오류: {template_action} (오류: {e})")
             self.truncations = {agent: True for agent in self.agents}
-            self.infos[current_agent]["error"] = "Action object creation error"
+            self.infos[current_agent]["error"] = "Action object creation or step execution error"
             self.agent_selection = self._agent_selector.next()
             return
 
-        if final_action.action_type == ActionType.BUY_CARD:
-            can_afford, _ = player.get_payment_details(final_action.card)
-            if not can_afford:
-                print("\n--- DEBUG: POTENTIAL VALUE ERROR ---")
-                print(f"Agent: {current_agent}")
-                print(f"Action: {final_action}")
-                print(f"Card to buy: {final_action.card}")
-                print(f"Card cost: {final_action.card.cost}")
-                print(f"Player Gems: {player.gems}")
-                print(f"Player Bonuses: {player.bonuses}")
-                print(f"Calculated can_afford: {can_afford}")
-                print("--- END DEBUG ---\n")
+        # --- try 블록 종료 ---
 
-        is_game_over = self.game.step(final_action)
         self.agent_selection = self._agent_selector.next()
         self.rewards = {agent: 0.0 for agent in self.agents}
+        
         if is_game_over:
             self.terminations = {agent: True for agent in self.agents}
             winner_id = self.game.winner_id
@@ -338,8 +357,10 @@ class SplendorEnv(AECEnv):
                     self.rewards[agent] = -1.0
             for agent in self.agents:
                 self.infos[agent] = {"game_winner": winner_id}
+        
         for agent in self.agents:
             self._cumulative_rewards[agent] += self.rewards[agent]
+        
         if self.render_mode == "human":
             self.render()
 
