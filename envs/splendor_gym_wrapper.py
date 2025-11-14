@@ -3,14 +3,13 @@
 # 관찰 공간을 'Box'로 되돌립니다.
 
 import gymnasium as gym
-import gymnasium.spaces
 import numpy as np
 from pettingzoo.utils.env import AECEnv
-from typing import Any # [수정] Any 타입 임포트
+from typing import Any
 
 from envs.splendor_aec_env import env as splendor_aec_env
-from agents.baselines.heuristic_bot import HeuristicBot
-from agents.baselines.random_bot import RandomBot
+from agents.heuristic_bot import HeuristicBot
+from agents.random_bot import RandomBot
 from splendor_game.actions import get_legal_return_gems_actions
 from splendor_game.actions import Action, ActionType 
 
@@ -148,6 +147,27 @@ class SplendorGymWrapper(gym.Env):
         """AI(player_0)의 행동을 받고, 봇의 턴까지 실행한 뒤, AI의 다음 상태를 반환합니다."""
         
         ai_agent = "player_0"
+
+        is_valid_action = self.current_action_mask[action] == 1
+        
+        final_action_to_env = action
+        reward_override = None # 보상 오버라이드 플래그
+
+        if not is_valid_action:
+            # 1. 행동이 유효하지 않은 경우 (DQN이 규칙 위반)
+            
+            # 2. DQN이 선택한 'action' 대신, "유효한 랜덤 행동"을 선택합니다.
+            valid_actions_indices = np.where(self.current_action_mask == 1)[0]
+            
+            if len(valid_actions_indices) > 0:
+                final_action_to_env = np.random.choice(valid_actions_indices)
+            else:
+                # (이런 경우는 거의 없지만) 유효한 행동이 아예 없다면,
+                # None을 보내서 턴을 넘깁니다. (이 경우 final_action_to_env = None)
+                final_action_to_env = None 
+            
+            # 3. DQN에게는 벌점을 줍니다. (1.0점으로 낮춤)
+            reward_override = -1.0
         
         self.aec_env.step(action)
         game_over = self._run_bot_turn()
@@ -164,6 +184,15 @@ class SplendorGymWrapper(gym.Env):
             termination = True 
             truncation = True
             info = self.aec_env.infos[ai_agent] 
+
+        if reward_override is not None:
+            # 게임이 끝나서 큰 보상(1.0)을 받은 경우에도,
+            # 이번 턴은 "규칙 위반"이었으므로 벌점을 우선합니다.
+            if termination or truncation:
+                 reward = reward_override
+            else:
+                # (DQN이 벌점을 받음) + (봇이 수행한 턴의 보상 - 보통 0)
+                reward = reward_override + reward
 
         self.current_action_mask = info.get("action_mask")
         return observation, reward, termination, truncation, info

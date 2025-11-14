@@ -9,12 +9,11 @@ from gymnasium.wrappers import FlattenObservation # [추가] DQN을 위한 래�
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from sb3_contrib.common.wrappers import ActionMasker
-from envs.splendor_gym_wrapper import SplendorGymWrapper #
+from envs.splendor_gym_wrapper import SplendorGymWrapper
 from sb3_contrib import MaskablePPO
 from stable_baselines3 import DQN
 
-# [추가] PPO 전용 정책 임포트
-from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy #
+from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
 def get_action_mask_from_env(env: gymnasium.Env):
     """
@@ -33,8 +32,6 @@ def make_env_sb3(agent_type="PPO"):
         # PPO는 ActionMasker 래퍼를 사용
         env = ActionMasker(env, get_action_mask_from_env)
     elif agent_type == "DQN":
-        # DQN은 MlpPolicy가 Dict 입력을 처리할 수 있도록 FlattenObservation 래퍼를 사용
-        # 이 래퍼는 {'observation': ..., 'action_mask': ...}를 하나의 긴 벡터로 만듭니다.
         env = FlattenObservation(env)
         
     return env
@@ -43,7 +40,6 @@ def load_config(config_path):
     """
     프로젝트 루트 기준의 설정 파일을 불러옵니다.
     """
-    # train.py의 위치(scripts/)에서 상위 폴더(프로젝트 루트)로 이동
     base_dir = os.path.dirname(os.path.abspath(__file__))
     full_path = os.path.join(base_dir, '..', config_path)
     
@@ -82,8 +78,8 @@ if __name__ == "__main__":
     model_class_name = config['model_class']
     ModelClass = get_model_class(model_class_name)
     
-    log_dir = os.path.join("logs", config['log_dir']) # [수정] logs/ 하위로
-    model_dir = os.path.join("models", config['model_dir']) # [수정] models/ 하위로
+    log_dir = os.path.join("results/logs", config['log_dir']) # [수정] logs/ 하위로
+    model_dir = os.path.join("results/models", config['model_dir']) # [수정] models/ 하위로
     
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)

@@ -1,20 +1,17 @@
 # envs/splendor_wrapper.py
 import numpy as np
-import gymnasium as gym
-import gymnasium.spaces
 from typing import Tuple, Dict, Any, Optional
 from gymnasium.spaces import Box, Discrete
 from pettingzoo.utils.env import AECEnv
 from pettingzoo.utils import agent_selector
 from collections import defaultdict
 import itertools
-import copy
 import dataclasses
 
 from splendor_game.game import SplendorGame
 from splendor_game.constants import GemColor, CARD_LEVELS, FACE_UP_CARDS_PER_LEVEL, MAX_RESERVED_CARDS, WINNING_SCORE, MAX_PLAYERS, SETUP_CONFIG
-from splendor_game.actions import Action, ActionType, get_legal_return_gems_actions
-from splendor_game.card import DevelopmentCard, CostDict, NobleTile
+from splendor_game.actions import Action, ActionType
+from splendor_game.card import DevelopmentCard, NobleTile
 
 def env(**kwargs):
     internal_env = SplendorEnv(**kwargs)
