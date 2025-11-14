@@ -1,5 +1,3 @@
-# splendor_game/player.py
-
 from typing import List, Tuple
 from collections import defaultdict
 
@@ -74,7 +72,6 @@ class Player:
         return can_buy
     
     def __repr__(self) -> str:
-        """Provides a simple text representation of the player's state."""
         rep_str = f"--- Player {self.player_id} (Score: {self.score}) ---\n"
         rep_str += "Gems: " + ", ".join(f"{c.value}: {v}" for c, v in self.gems.items() if v > 0) + "\n"
         rep_str += "Bonuses: " + ", ".join(f"{c.value}: {v}" for c, v in self.bonuses.items() if v > 0) + "\n"

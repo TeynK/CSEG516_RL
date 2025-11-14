@@ -1,5 +1,3 @@
-# splendor_game/main_text.py
-
 from splendor_game.game import SplendorGame
 from splendor_game.actions import Action
 

@@ -1,8 +1,4 @@
-# splendor_game/game.py
-
-import itertools
 from typing import List, Optional
-from collections import defaultdict
 
 from .constants import GemColor, WINNING_SCORE, MAX_GEMS_PER_PLAYER
 from .card import DevelopmentCard
@@ -103,8 +99,6 @@ class SplendorGame:
         self.board.return_gems(gems_to_spend)
         
         if action.is_reserved_buy:
-            # Find the actual index of the card to remove, as action.index might be stale
-            # if another reserved card was bought previously in the same turn (not possible in current rules, but good practice).
             for i, reserved_card in enumerate(player.reserved_cards):
                 if reserved_card == card:
                     player.reserved_cards.pop(i)

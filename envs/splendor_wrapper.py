@@ -12,7 +12,9 @@ import dataclasses
 
 from splendor_game.game import SplendorGame
 from splendor_game.constants import GemColor, CARD_LEVELS, FACE_UP_CARDS_PER_LEVEL, MAX_RESERVED_CARDS, WINNING_SCORE, MAX_PLAYERS, SETUP_CONFIG
-from splendor_game.actions import Action, ActionType
+# [수정] get_legal_actions가 game.get_legal_actions() 내부에서만 사용되므로
+# 별도 import는 필요하지 않습니다. (get_legal_return_gems_actions는 필요함)
+from splendor_game.actions import Action, ActionType, get_legal_return_gems_actions
 from splendor_game.card import DevelopmentCard, CostDict, NobleTile
 
 def env(**kwargs):
@@ -28,6 +30,13 @@ class SplendorEnv(AECEnv):
         "render_modes": ["human"],
         "is_parallelizable": True,
     }
+    
+    # ... __init__, create_action_maps, calculate_obs_size, 
+    # encode_card, encode_noble, get_obs_vector, get_action_mask 
+    # 함수들은 (이전과 동일) ...
+    # (여기에 __init__부터 get_action_mask까지의 코드가 있다고 가정합니다)
+    # (편의를 위해 observe와 step 함수만 다시 작성합니다)
+
     def __init__(self, num_players=2, render_mode=None):
         super().__init__()
         if not (2 <= num_players <= 4):
@@ -44,7 +53,7 @@ class SplendorEnv(AECEnv):
         self.truncations = {agent: False for agent in self.agents}
         self.infos = {agent: {} for agent in self.agents}
         self.agent_selection: str = ""
-        self.action_map_int_to_obj, self.action_map_obj_to_int = self._create_action_maps()
+        self.action_map_int_to_obj, self.action_map_obj_to_int = self.create_action_maps()
         self.TOTAL_ACTIONS = len(self.action_map_int_to_obj)
         self.action_spaces = {agent: Discrete(self.TOTAL_ACTIONS) for agent in self.agents}
         self._gem_colors_all = GemColor.get_all_gems()
@@ -52,10 +61,10 @@ class SplendorEnv(AECEnv):
         self._card_feature_size = 2 + len(self._gem_colors_all) + len(self._gem_colors_standard)
         self._noble_feature_size = 1 + len(self._gem_colors_standard)
         self._max_nobles =  SETUP_CONFIG[MAX_PLAYERS]['nobles']
-        self.OBS_VECTOR_SIZE = self._calculate_obs_size()
+        self.OBS_VECTOR_SIZE = self.calculate_obs_size()
         self.observation_spaces = {agent: Box(low=0, high=1.0, shape=(self.OBS_VECTOR_SIZE,), dtype=np.float32) for agent in self.agents}
 
-    def _create_action_maps(self) -> Tuple[Dict[int, Action], Dict[Any, int]]:
+    def create_action_maps(self) -> Tuple[Dict[int, Action], Dict[Any, int]]:
         int_to_obj: Dict[int, Action] = {}
         obj_to_int: Dict[Any, int] = {}
         idx = 0
@@ -130,7 +139,7 @@ class SplendorEnv(AECEnv):
         assert idx == 143, f"총 행동 개수가 143이 아닙니다: {idx}"
         return int_to_obj, obj_to_int
 
-    def _calculate_obs_size(self) -> int:
+    def calculate_obs_size(self) -> int:
         size = 0
         player_state_size = 0
         player_state_size += len(self._gem_colors_all)
@@ -145,7 +154,7 @@ class SplendorEnv(AECEnv):
         size += (3 * 4) * self._card_feature_size
         return size
     
-    def _encode_card(self, obs: np.ndarray, idx: int, card: DevelopmentCard) -> int:
+    def encode_card(self, obs: np.ndarray, idx: int, card: DevelopmentCard) -> int:
         obs[idx] = card.level / 3.0
         idx += 1
         obs[idx] = card.points / 5.0
@@ -161,7 +170,7 @@ class SplendorEnv(AECEnv):
             idx += 1
         return idx
     
-    def _encode_noble(self, obs: np.ndarray, idx: int, noble: NobleTile) -> int:
+    def encode_noble(self, obs: np.ndarray, idx: int, noble: NobleTile) -> int:
         obs[idx] = noble.points / 3.0
         idx += 1
         for color in self._gem_colors_standard:
@@ -169,7 +178,7 @@ class SplendorEnv(AECEnv):
             idx += 1
         return idx
         
-    def _get_obs_vector(self, player_id: int) -> np.ndarray:
+    def get_obs_vector(self, player_id: int) -> np.ndarray:
         obs = np.zeros(self.OBS_VECTOR_SIZE, dtype=np.float32)
         idx = 0
         game = self.game
@@ -191,7 +200,7 @@ class SplendorEnv(AECEnv):
             for j in range(MAX_RESERVED_CARDS):
                 if j < len(player.reserved_cards):
                     card = player.reserved_cards[j]
-                    idx = self._encode_card(obs, idx, card)
+                    idx = self.encode_card(obs, idx, card)
                 else:
                     idx += self._card_feature_size
             if i == 0:
@@ -211,22 +220,26 @@ class SplendorEnv(AECEnv):
         for i in range(self._max_nobles):
             if i < len(game.board.nobles):
                 noble = game.board.nobles[i]
-                idx = self._encode_noble(obs, idx, noble)
+                idx = self.encode_noble(obs, idx, noble)
             else:
                 idx += self._noble_feature_size
         for level in CARD_LEVELS:
             for i in range(FACE_UP_CARDS_PER_LEVEL):
                 card = game.board.face_up_cards[level][i]
                 if card:
-                    idx = self._encode_card(obs, idx, card)
+                    idx = self.encode_card(obs, idx, card)
                 else:
-                    idx += self._card_feature_size # 빈 슬롯 스킵
+                    idx += self._card_feature_size 
         
         assert idx == self.OBS_VECTOR_SIZE, f"관측 벡터 크기 불일치: {idx} != {self.OBS_VECTOR_SIZE}"
         return obs
-    def _get_action_mask(self) -> np.ndarray:
+
+    def get_action_mask(self) -> np.ndarray:
         mask = np.zeros(self.TOTAL_ACTIONS, dtype=np.int8)
-        legal_actions = self.game.get_legal_actions()
+        
+        # [중요] get_legal_actions는 이제 self.game.current_player_index를 
+        # 기반으로 올바른 플레이어의 행동을 가져옵니다.
+        legal_actions = self.game.get_legal_actions() 
 
         for action in legal_actions:
             key: Any = None
@@ -251,18 +264,20 @@ class SplendorEnv(AECEnv):
 
     def observe(self, agent: str) -> np.ndarray:
         player_id = self.agents.index(agent)
-        observation = self._get_obs_vector(player_id)
+        observation = self.get_obs_vector(player_id)
+        
         if agent == self.agent_selection:
-            self.infos[agent]["action_mask"] = self._get_action_mask()
+            self.game.current_player_index = player_id
+            
+            self.infos[agent]["action_mask"] = self.get_action_mask()
         
         return observation
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> None:
-        self.game.reset() 
+        self.game.reset()
         self.agents = self.possible_agents[:]
         self._agent_selector.reinit(self.agents)
         self.agent_selection = self._agent_selector.next()
-
         self.rewards = {agent: 0.0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
@@ -273,11 +288,16 @@ class SplendorEnv(AECEnv):
         if self.terminations[self.agent_selection] or self.truncations[self.agent_selection]:
             self._was_dead_step(action)
             return
-
         current_agent = self.agent_selection
         current_player_id = self.agents.index(current_agent)
+        self.game.current_player_index = current_player_id
         player = self.game.players[current_player_id]
-        current_mask = self._get_action_mask()
+        current_mask = self.get_action_mask()
+        
+        if action is None:
+            print(f"[경고] 에이전트 {current_agent}가 None 행동을 전달했습니다. (유효 행동 없음) 턴을 넘깁니다.")
+            self.agent_selection = self._agent_selector.next()
+            return
         
         if current_mask[action] == 0:
             print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
@@ -288,13 +308,12 @@ class SplendorEnv(AECEnv):
         
         template_action = self.action_map_int_to_obj[action]
         final_action = template_action
-        is_game_over = False # is_game_over를 try 블록 밖에서 초기화
+        is_game_over = False
 
         try:
             if template_action.action_type == ActionType.BUY_CARD:
                 card_to_buy = None
                 if template_action.is_reserved_buy:
-                    # [수정] 인덱스 범위 검사 추가
                     if template_action.index >= len(player.reserved_cards):
                         raise IndexError(f"잘못된 예약 카드 인덱스: {template_action.index}")
                     card_to_buy = player.reserved_cards[template_action.index]
@@ -313,13 +332,10 @@ class SplendorEnv(AECEnv):
                         raise ValueError("예약하려는 카드가 비어있습니다 (None).")
                     final_action = dataclasses.replace(template_action, card=card_to_reserve)
 
-            # --- [수정] affordability 검사 및 game.step() 호출을 try 블록 안으로 이동 ---
-
             if final_action.action_type == ActionType.BUY_CARD:
                 can_afford, _ = player.get_payment_details(final_action.card)
                 if not can_afford:
-                    # 디버그 메시지 출력
-                    print("\n--- DEBUG: POTENTIAL VALUE ERROR ---")
+                    print("\n--- DEBUG: POTENTIAL VALUE ERROR (SYNC FIX APPLIED) ---")
                     print(f"Agent: {current_agent}")
                     print(f"Action: {final_action}")
                     print(f"Card to buy: {final_action.card}")
@@ -329,10 +345,8 @@ class SplendorEnv(AECEnv):
                     print(f"Calculated can_afford: {can_afford}")
                     print("--- END DEBUG ---\n")
                     
-                    # [수정] 에러를 발생시켜 except 블록에서 처리하도록 함
-                    raise ValueError("마스크와 실제 'can_afford' 상태가 일치하지 않습니다.")
+                    raise ValueError("마스크와 실제 'can_afford' 상태가 일치하지 않습니다. (SYNC FIX 후에도 발생)")
 
-            # [수정] self.game.step() 호출을 try 블록 안으로 이동
             is_game_over = self.game.step(final_action)
 
         except (IndexError, ValueError, TypeError) as e:
@@ -342,9 +356,9 @@ class SplendorEnv(AECEnv):
             self.agent_selection = self._agent_selector.next()
             return
 
-        # --- try 블록 종료 ---
+        if self.game.current_player_state != "RETURN_GEMS":
+            self.agent_selection = self._agent_selector.next()
 
-        self.agent_selection = self._agent_selector.next()
         self.rewards = {agent: 0.0 for agent in self.agents}
         
         if is_game_over:
@@ -366,6 +380,10 @@ class SplendorEnv(AECEnv):
 
     def render(self) -> None:
         if self.render_mode == "human":
+            # [수정] render 시점에도 동기화
+            current_player_id = self.agents.index(self.agent_selection)
+            self.game.current_player_index = current_player_id
+            
             current_player = self.game.get_current_player()
             print("\n" + "="*60)
             print(f"--- 턴: {self.game.current_player_index}, "

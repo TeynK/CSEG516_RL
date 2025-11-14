@@ -1,5 +1,3 @@
-# splendor_game/constants.py
-
 from enum import Enum
 
 MIN_PLAYERS = 2
@@ -161,6 +159,3 @@ _NOBLES_DATA = [
     (3, {GemColor.GREEN: 3, GemColor.RED: 3, GemColor.BLACK: 3}),
     (3, {GemColor.WHITE: 3, GemColor.BLUE: 3, GemColor.BLACK: 3}),
 ]
-
-
-

@@ -1,5 +1,3 @@
-# splendor_game/actions.py
-
 import itertools
 from enum import Enum
 from dataclasses import dataclass, field
@@ -29,7 +27,6 @@ class Action:
     is_deck_reserve: bool = False
 
     def __repr__(self) -> str:
-        """Provides a human-readable representation for debugging."""
         if self.action_type == ActionType.TAKE_THREE_GEMS:
             colors = [g.value for g in self.gems.keys()]
             return f"Action(TAKE_THREE: {', '.join(colors)})"

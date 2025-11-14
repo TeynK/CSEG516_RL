@@ -1,5 +1,3 @@
-# splendor_game/board.py
-
 from typing import Dict, List, Optional
 
 from .constants import SETUP_CONFIG, GemColor, CARD_LEVELS, FACE_UP_CARDS_PER_LEVEL
