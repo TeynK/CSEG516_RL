@@ -1,0 +1,5 @@
+agents
+configs
+envs
+scripts
+splendor_game

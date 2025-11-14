@@ -8,9 +8,9 @@ import numpy as np
 from pettingzoo.utils.env import AECEnv
 from typing import Any # [수정] Any 타입 임포트
 
-from envs.splendor_wrapper import env as splendor_aec_env
-from agents.heuristic_bot import HeuristicBot
-from agents.random_bot import RandomBot
+from envs.splendor_aec_env import env as splendor_aec_env
+from agents.baselines.heuristic_bot import HeuristicBot
+from agents.baselines.random_bot import RandomBot
 from splendor_game.actions import get_legal_return_gems_actions
 # [수정] Action, ActionType 임포트 추가
 from splendor_game.actions import Action, ActionType 

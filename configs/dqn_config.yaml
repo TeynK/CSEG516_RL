@@ -1,0 +1,20 @@
+agent_type: "DQN"
+model_class: "DQN"
+
+num_cpu: 8
+
+log_dir: "./results/logs/dqn/"
+model_dir: "./results/models/dqn/"
+model_name: "dqn_splendor_vs_bot"
+
+total_timesteps: 1000000
+save_interval: 100000
+
+policy: "MlpPolicy"
+
+model_hyperparameters:
+  # DQN 고유 파라미터들
+  buffer_size: 100000
+  learning_starts: 50000
+  batch_size: 32
+  gamma: 0.99

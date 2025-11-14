@@ -1,0 +1,15 @@
+# configs/ppo_config.yaml
+
+agent_type: "PPO" 
+model_class: "MaskablePPO"
+
+num_cpu: 8
+
+log_dir: "./results/logs/ppo/"
+model_dir: "./results/models/ppo/"
+model_name: "maskable_ppo_splendor_vs_bot"
+
+total_timesteps: 1000000
+save_interval: 100000
+
+policy: "MlpPolicy"

@@ -2,7 +2,7 @@ import traceback
 from splendor_game.game import SplendorGame
 from splendor_game.player import Player
 from splendor_game.actions import get_legal_return_gems_actions, ActionType, Action
-from agents.heuristic_bot import HeuristicBot
+from agents.baselines.heuristic_bot import HeuristicBot
 
 MAX_GAME_TURNS = 5000
 
