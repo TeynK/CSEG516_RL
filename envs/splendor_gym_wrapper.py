@@ -12,7 +12,6 @@ from envs.splendor_aec_env import env as splendor_aec_env
 from agents.baselines.heuristic_bot import HeuristicBot
 from agents.baselines.random_bot import RandomBot
 from splendor_game.actions import get_legal_return_gems_actions
-# [수정] Action, ActionType 임포트 추가
 from splendor_game.actions import Action, ActionType 
 
 class SplendorGymWrapper(gym.Env):

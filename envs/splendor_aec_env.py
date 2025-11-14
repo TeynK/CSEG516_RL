@@ -1,6 +1,7 @@
 # envs/splendor_wrapper.py
 import numpy as np
 import gymnasium as gym
+import gymnasium.spaces
 from typing import Tuple, Dict, Any, Optional
 from gymnasium.spaces import Box, Discrete
 from pettingzoo.utils.env import AECEnv
@@ -12,8 +13,6 @@ import dataclasses
 
 from splendor_game.game import SplendorGame
 from splendor_game.constants import GemColor, CARD_LEVELS, FACE_UP_CARDS_PER_LEVEL, MAX_RESERVED_CARDS, WINNING_SCORE, MAX_PLAYERS, SETUP_CONFIG
-# [수정] get_legal_actions가 game.get_legal_actions() 내부에서만 사용되므로
-# 별도 import는 필요하지 않습니다. (get_legal_return_gems_actions는 필요함)
 from splendor_game.actions import Action, ActionType, get_legal_return_gems_actions
 from splendor_game.card import DevelopmentCard, CostDict, NobleTile
 
@@ -31,12 +30,6 @@ class SplendorEnv(AECEnv):
         "is_parallelizable": True,
     }
     
-    # ... __init__, create_action_maps, calculate_obs_size, 
-    # encode_card, encode_noble, get_obs_vector, get_action_mask 
-    # 함수들은 (이전과 동일) ...
-    # (여기에 __init__부터 get_action_mask까지의 코드가 있다고 가정합니다)
-    # (편의를 위해 observe와 step 함수만 다시 작성합니다)
-
     def __init__(self, num_players=2, render_mode=None):
         super().__init__()
         if not (2 <= num_players <= 4):
@@ -236,11 +229,7 @@ class SplendorEnv(AECEnv):
 
     def get_action_mask(self) -> np.ndarray:
         mask = np.zeros(self.TOTAL_ACTIONS, dtype=np.int8)
-        
-        # [중요] get_legal_actions는 이제 self.game.current_player_index를 
-        # 기반으로 올바른 플레이어의 행동을 가져옵니다.
-        legal_actions = self.game.get_legal_actions() 
-
+        legal_actions = self.game.get_legal_actions()
         for action in legal_actions:
             key: Any = None
             if action.action_type == ActionType.TAKE_THREE_GEMS:
@@ -259,18 +248,14 @@ class SplendorEnv(AECEnv):
                 mask[int_idx] = 1
             else:
                 print(f"[경고] 유효한 행동 {action}을 정수 인덱스로 변환할 수 없습니다. (키: {key})")
-                
         return mask
 
     def observe(self, agent: str) -> np.ndarray:
         player_id = self.agents.index(agent)
         observation = self.get_obs_vector(player_id)
-        
         if agent == self.agent_selection:
             self.game.current_player_index = player_id
-            
             self.infos[agent]["action_mask"] = self.get_action_mask()
-        
         return observation
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> None:
@@ -293,53 +278,42 @@ class SplendorEnv(AECEnv):
         self.game.current_player_index = current_player_id
         player = self.game.players[current_player_id]
         current_mask = self.get_action_mask()
-
         current_mask = self.get_action_mask()
         has_no_legal_actions = np.sum(current_mask) == 0
-        
         if action is None:
             if has_no_legal_actions:
-                # 봇의 턴에 행동 불능 상태가 감지됨
                 print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. 게임을 무승부로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
-                self.rewards = {agent: 0.0 for agent in self.agents} # 보상 0.0 (무승부)
+                self.rewards = {agent: 0.0 for agent in self.agents}
                 self.infos = {agent: {"game_winner": None, "deadlock": True} for agent in self.agents}
             else:
-                # (이론상 발생하면 안 됨) 행동이 있는데 None이 전달됨
                 print(f"[오류] 에이전트 {current_agent}가 None 행동을 전달했지만 유효한 행동이 있습니다. 턴을 넘깁니다.")
-            
             self.agent_selection = self._agent_selector.next()
             return
-        
         if current_mask[action] == 0:
             if has_no_legal_actions:
-                # AI의 턴에 행동 불능 상태가 감지됨 (AI가 무엇을 선택했든 어차피 불가능)
                 print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. (행동 {action} 선택됨) 게임을 무승부로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
-                self.rewards = {agent: 0.0 for agent in self.agents} # 보상 0.0 (무승부)
+                self.rewards = {agent: 0.0 for agent in self.agents}
                 self.infos = {agent: {"game_winner": None, "deadlock": True} for agent in self.agents}
             else:
-                # 행동 불능은 아니지만, AI가 유효하지 않은 행동을 선택함
                 print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
                 self.truncations = {agent: True for agent in self.agents}
                 self.infos[current_agent]["error"] = "Invalid action submitted."
 
             self.agent_selection = self._agent_selector.next()
             return
-        
         if current_mask[action] == 0:
             print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Invalid action submitted."
             self.agent_selection = self._agent_selector.next()
             return
-        
         template_action = self.action_map_int_to_obj[action]
         final_action = template_action
         is_game_over = False
-
         try:
             if template_action.action_type == ActionType.BUY_CARD:
                 card_to_buy = None
@@ -349,19 +323,15 @@ class SplendorEnv(AECEnv):
                     card_to_buy = player.reserved_cards[template_action.index]
                 else:
                     card_to_buy = self.game.board.face_up_cards[template_action.level][template_action.index]
-                
                 if card_to_buy is None:
                     raise ValueError("구매하려는 카드가 비어있습니다 (None).")
-                
                 final_action = dataclasses.replace(template_action, card=card_to_buy)
-
             elif template_action.action_type == ActionType.RESERVE_CARD:
                 if not template_action.is_deck_reserve:
                     card_to_reserve = self.game.board.face_up_cards[template_action.level][template_action.index]
                     if card_to_reserve is None:
                         raise ValueError("예약하려는 카드가 비어있습니다 (None).")
                     final_action = dataclasses.replace(template_action, card=card_to_reserve)
-
             if final_action.action_type == ActionType.BUY_CARD:
                 can_afford, _ = player.get_payment_details(final_action.card)
                 if not can_afford:
@@ -374,23 +344,17 @@ class SplendorEnv(AECEnv):
                     print(f"Player Bonuses: {player.bonuses}")
                     print(f"Calculated can_afford: {can_afford}")
                     print("--- END DEBUG ---\n")
-                    
                     raise ValueError("마스크와 실제 'can_afford' 상태가 일치하지 않습니다. (SYNC FIX 후에도 발생)")
-
             is_game_over = self.game.step(final_action)
-
         except (IndexError, ValueError, TypeError) as e:
             print(f"[오류] Action 객체 생성 또는 step 실행 중 오류: {template_action} (오류: {e})")
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Action object creation or step execution error"
             self.agent_selection = self._agent_selector.next()
             return
-
         if self.game.current_player_state != "RETURN_GEMS":
             self.agent_selection = self._agent_selector.next()
-
         self.rewards = {agent: 0.0 for agent in self.agents}
-        
         if is_game_over:
             self.terminations = {agent: True for agent in self.agents}
             winner_id = self.game.winner_id
@@ -410,10 +374,8 @@ class SplendorEnv(AECEnv):
 
     def render(self) -> None:
         if self.render_mode == "human":
-            # [수정] render 시점에도 동기화
             current_player_id = self.agents.index(self.agent_selection)
             self.game.current_player_index = current_player_id
-            
             current_player = self.game.get_current_player()
             print("\n" + "="*60)
             print(f"--- 턴: {self.game.current_player_index}, "
@@ -432,3 +394,4 @@ class SplendorEnv(AECEnv):
     
     def close(self) -> None:
         pass
+

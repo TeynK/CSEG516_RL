@@ -1,4 +1,4 @@
-from envs.splendor_wrapper import env as splendor_env
+from envs.splendor_aec_env import env as splendor_env
 from pettingzoo.test import api_test
 
 if __name__ == "__main__":
