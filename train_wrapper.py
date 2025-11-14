@@ -10,6 +10,7 @@ from typing import Any # [수정] Any 타입 임포트
 
 from envs.splendor_wrapper import env as splendor_aec_env
 from agents.heuristic_bot import HeuristicBot
+from agents.random_bot import RandomBot
 from splendor_game.actions import get_legal_return_gems_actions
 # [수정] Action, ActionType 임포트 추가
 from splendor_game.actions import Action, ActionType 
@@ -35,9 +36,10 @@ class SplendorGymWrapper(gym.Env):
         # --- [수정 끝] ---
         
         self.bot = HeuristicBot(player_id=1)
+        # self.bot = RandomBot(player_id=1)
         self.agents = ["player_0", "player_1"]
 
-        self.current_action_mast = None
+        self.current_action_mask = None
 
     def action_mask(self) -> np.ndarray:
         """

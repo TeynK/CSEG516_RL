@@ -49,9 +49,16 @@ def run_bots_game(num_players=2, verbose=True):
                 legal_actions = game.get_legal_actions()
                 
             if not legal_actions:
-                if verbose: print("유효한 행동이 없습니다. 턴을 스킵합니다.")
-                game.next_turn() 
-                turn_count += 1
+                print("\n" + "="*50)
+                print(f"!!!! 치명적인 버그 감지: 유효한 행동 없음 !!!!")
+                print(f"턴: {turn_count}, 플레이어: {current_player.player_id}")
+                print("--- 플레이어 상태 ---")
+                print(current_player)
+                print(f"예약 카드 개수: {len(current_player.reserved_cards)}")
+                print("--- 보드 상태 ---")
+                print(game.board)
+                print("="*50)
+                raise Exception("유효한 행동이 없는 상태(deadlock)에 도달했습니다.")
                 continue
 
             selected_action = bot.choose_action(game.board, current_player, legal_actions)
