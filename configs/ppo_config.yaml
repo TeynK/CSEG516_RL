@@ -12,11 +12,9 @@ model_name: "maskable_ppo_splendor_vs_bot"
 total_timesteps: 1000000
 save_interval: 100000
 
-policy: "MlpPolicy"
-
 model_hyperparameters:
   n_steps: 2048
   batch_size: 64
   gamma: 0.99
 
-load_model_path: "models/maskable_ppo_splendor_vs_bot_final.zip"
+load_model_path: "results/models/ppo/maskable_ppo_splendor_vs_bot_final.zip"

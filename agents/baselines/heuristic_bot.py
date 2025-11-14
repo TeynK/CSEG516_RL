@@ -19,14 +19,16 @@ class HeuristicBot:
             
         if legal_actions[0].action_type == ActionType.RETURN_GEMS:
             return legal_actions[0]
-
         action = self._find_winning_move(board, player)
         if action:
             return action
-
         action = self._buy_reserved_target(player)
         if action:
             return action
+        if self.target_card:
+            action = self._gather_for_target(board, player, legal_actions)
+            if action:
+                return action
         action = self._set_and_reserve_target(board, player)
         if action:
             return action
