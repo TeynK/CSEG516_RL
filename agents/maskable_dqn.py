@@ -29,6 +29,7 @@ class MaskableDQN(DQN):
                     th.tensor(-float("inf")).to(self.device)
                 )
                 next_q_values, _ = masked_next_q.max(dim=1)
+                next_q_values = th.nan_to_num(next_q_values, neginf=0.0)
                 next_q_values = next_q_values.reshape(-1, 1)
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
             current_q_values = self.q_net(real_obs)
@@ -51,18 +52,16 @@ class MaskableDQN(DQN):
                 q_values,
                 th.tensor(-float("inf")).to(self.device)
             )
+            exploitation_actions = masked_q_values.argmax(dim=1)
         if not deterministic and np.random.rand() < self.exploration_rate:
-            batch_size = mask_tensor.shape[0]
-            actions = []
-            for i in range(batch_size):
-                valid_indices = th.where(mask_tensor[i])[0]
-                if len(valid_indices) > 0:
-                    actions.append(np.random.choice(valid_indices.cpu().numpy()))
-                else:
-                    actions.append(masked_q_values[i].argmax().item())
-            action = th.as_tensor(actions, device=self.device)
+            float_mask = mask_tensor.float()
+            all_invalid_mask = (float_mask.sum(dim=1) == 0)
+            safe_mask = float_mask.clone()
+            safe_mask[all_invalid_mask, 0] = 1.0
+            exploration_actions = th.multinomial(safe_mask, num_samples=1).squeeze(1)
+            action = exploration_actions
         else:
-            action = masked_q_values.argmax(dim=1)
+            action = exploitation_actions
         action = action.reshape(-1)
         return action.cpu().numpy(), state
             
