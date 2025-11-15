@@ -169,7 +169,7 @@ class SplendorGymWrapper(gym.Env):
             # 3. DQN에게는 벌점을 줍니다. (1.0점으로 낮춤)
             reward_override = -1.0
         
-        self.aec_env.step(action)
+        self.aec_env.step(final_action_to_env)
         game_over = self._run_bot_turn()
         
         if not game_over:

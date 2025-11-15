@@ -12,6 +12,7 @@ from sb3_contrib.common.wrappers import ActionMasker
 from envs.splendor_gym_wrapper import SplendorGymWrapper
 from sb3_contrib import MaskablePPO
 from stable_baselines3 import DQN
+from agents.maskable_dqn import MaskableDQN
 
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 
@@ -26,14 +27,8 @@ def make_env_sb3(agent_type="PPO"):
     """
     에이전트 타입(PPO/DQN)에 따라 적절한 래퍼를 적용한 환경을 생성합니다.
     """
-    env = SplendorGymWrapper(num_players=2) #
-    
-    if agent_type == "PPO":
-        # PPO는 ActionMasker 래퍼를 사용
-        env = ActionMasker(env, get_action_mask_from_env)
-    elif agent_type == "DQN":
-        env = FlattenObservation(env)
-        
+    env = SplendorGymWrapper(num_players=2)
+    env = ActionMasker(env, get_action_mask_from_env)  
     return env
 
 def load_config(config_path):
@@ -55,8 +50,8 @@ def get_model_class(class_name):
     """
     if class_name == "MaskablePPO" and MaskablePPO:
         return MaskablePPO
-    if class_name == "DQN" and DQN:
-        return DQN
+    if class_name == "DQN" and MaskableDQN:
+        return MaskableDQN
     # [오류 처리] 지원하지 않는 모델 클래스
     raise ValueError(f"'{class_name}'은(는) 지원하지 않는 모델 클래스입니다. (MaskablePPO 또는 DQN)")
     
@@ -126,9 +121,10 @@ if __name__ == "__main__":
             if "policy" in model_params: # config에 MlpPolicy 등이 있어도 무시
                 del model_params["policy"]
         else: # DQN 등
-            policy = config.get("policy", "MlpPolicy") 
-            if "policy" in model_params:
-                del model_params["policy"] # model_params 대신 인자로 전달
+            policy = "MultiInputPolicy"
+        #     policy = config.get("policy", "MlpPolicy") 
+        #     if "policy" in model_params:
+        #         del model_params["policy"] # model_params 대신 인자로 전달
         
         model = ModelClass(
             policy=policy,
@@ -138,6 +134,8 @@ if __name__ == "__main__":
             **model_params
         )
         print("--- 모델 생성 완료 ---")
+
+    a = input("tmp")
 
     # --- 학습 파라미터 ---
     total_timesteps = config['total_timesteps'] 
