@@ -1,11 +1,11 @@
 agent_type: "DQN"
-model_class: "DQN"
+model_class: "MaskableDQN"
 
 num_cpu: 8
 
 log_dir: "DQN"
 model_dir: "DQN"
-model_name: "dqn_splendor_vs_bot"
+model_name: "maskable_dqn_splendor_vs_bot"
 
 total_timesteps: 40000000
 save_interval: 4000000

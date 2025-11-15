@@ -250,9 +250,8 @@ class SplendorEnv(AECEnv):
     def observe(self, agent: str) -> np.ndarray:
         player_id = self.agents.index(agent)
         observation = self.get_obs_vector(player_id)
-        if agent == self.agent_selection:
-            self.game.current_player_index = player_id
-            self.infos[agent]["action_mask"] = self.get_action_mask()
+        self.game.current_player_index = player_id
+        self.infos[agent]["action_mask"] = self.get_action_mask()
         return observation
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> None:
