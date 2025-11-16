@@ -7,8 +7,8 @@ log_dir: "DQN"
 model_dir: "DQN"
 model_name: "maskable_dqn_splendor_vs_bot"
 
-total_timesteps: 40000000
-save_interval: 4000000
+total_timesteps: 10000000
+save_interval: 1000000
 
 policy: "MultiInputPolicy"
 

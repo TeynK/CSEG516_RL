@@ -38,8 +38,6 @@ def get_model_class(class_name: str) -> Type:
     else:
         raise ValueError(f"Unknown model class: {class_name}. (Supported: MaskablePPO, DQN, MaskableDQN)")
 
-# --- [수정된 부분 1] ---
-# model_class_name을 인자로 받도록 수정
 def make_env_thunk(model_class_name: str) -> Callable:
     """
     환경을 생성하는 Thunk 함수.
@@ -47,13 +45,8 @@ def make_env_thunk(model_class_name: str) -> Callable:
     """
     def _thunk():
         env = SplendorGymWrapper(num_players=2)
-        
-        # MaskablePPO일 때만 ActionMasker 래퍼를 적용
         if model_class_name == "MaskablePPO":
             env = ActionMasker(env, lambda env: env.action_mask())
-            
-        # MaskableDQN이나 일반 DQN은 래퍼를 적용하지 않음
-        # (Wrapper가 이미 Dict 형태로 반환하므로)
         return env
     return _thunk
 # --- [수정 끝] ---
@@ -109,7 +102,7 @@ if __name__ == "__main__":
         policy_to_use = None
 
         if model_class_name == "MaskablePPO":
-            policy_to_use = MaskableActorCriticPolicy
+            policy_to_use = "MultiInputPolicy"
             print(f"Using policy: MaskableActorCriticPolicy (required for MaskablePPO)")
         elif policy_name:
             policy_to_use = policy_name
