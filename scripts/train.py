@@ -39,17 +39,12 @@ def get_model_class(class_name: str) -> Type:
         raise ValueError(f"Unknown model class: {class_name}. (Supported: MaskablePPO, DQN, MaskableDQN)")
 
 def make_env_thunk(model_class_name: str) -> Callable:
-    """
-    환경을 생성하는 Thunk 함수.
-    MaskablePPO일 때만 ActionMasker 래퍼를 적용합니다.
-    """
     def _thunk():
         env = SplendorGymWrapper(num_players=2)
         if model_class_name == "MaskablePPO":
             env = ActionMasker(env, lambda env: env.action_mask())
         return env
     return _thunk
-# --- [수정 끝] ---
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -68,24 +63,13 @@ if __name__ == "__main__":
     os.makedirs(full_model_dir, exist_ok=True)
 
     num_cpu = config.get("num_cpu", 8)
-    
-    # --- [수정된 부분 2] ---
-    # model_class_name을 env 생성 전에 미리 가져옴
     model_class_name = config.get("model_class")
     ModelClass = get_model_class(model_class_name)
-    # --- [수정 끝] ---
-
     model_params = config.get("model_hyperparameters", {})
     load_path = config.get("load_model_path", "")
-
-    # --- [수정된 부분 3] ---
-    # env_thunk에 model_class_name 전달
     env_thunk = make_env_thunk(model_class_name)
     vec_env = make_vec_env(env_thunk, n_envs=num_cpu, vec_env_cls=SubprocVecEnv)
-    # --- [수정 끝] ---
-
     print(f"--- Using {num_cpu} CPUs for '{model_class_name}' parallel training ---")
-
     model = None
     is_valid_load_path = load_path and os.path.exists(load_path)
 
@@ -108,8 +92,6 @@ if __name__ == "__main__":
             policy_to_use = policy_name
             print(f"Using policy: {policy_name} (from config)")
         else:
-            # MaskableDQN은 내부적으로 DQNPolicy를 사용하므로,
-            # policy_name이 None이어도 괜찮지만, 명시성을 위해 MultiInputPolicy를 권장합니다.
             raise ValueError("Policy must be specified in config if not using MaskablePPO")
             
         model = ModelClass(
@@ -123,12 +105,9 @@ if __name__ == "__main__":
     total_timesteps = config.get("total_timesteps", 1000000)
     save_interval = config.get("save_interval", 100000)
     model_name = config.get("model_name", "model")
-
     iterations = max(1, total_timesteps // save_interval)
     timesteps_per_iteration = save_interval
-
     print(f"--- Starting training for {total_timesteps} timesteps ({iterations} iterations of {timesteps_per_iteration} steps) ---")
-
     try:
         for i in range(iterations):
             model.learn(
@@ -147,10 +126,10 @@ if __name__ == "__main__":
         interrupted_path = os.path.join(full_model_dir, f"{model_name}_interrupted.zip")
         model.save(interrupted_path)
         print(f"Model saved to: {interrupted_path}")
-
-    print("--- Training complete ---")
-    final_model_path = os.path.join(full_model_dir, f"{model_name}_final.zip")
-    model.save(final_model_path)
-    print(f"Final model saved to: {final_model_path}")
+    else: 
+        print("--- Training complete ---")
+        final_model_path = os.path.join(full_model_dir, f"{model_name}_final.zip")
+        model.save(final_model_path)
+        print(f"Final model saved to: {final_model_path}")
 
     vec_env.close()

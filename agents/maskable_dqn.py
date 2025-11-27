@@ -1,9 +1,9 @@
 import torch as th
 import numpy as np
 from stable_baselines3 import DQN
-from stable_baselines3.common.buffers import DictReplayBuffer, ReplayBuffer
+from stable_baselines3.common.buffers import DictReplayBuffer
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
-from typing import Type, Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 class MaskableDQN(DQN):
     def _setup_model(self):
