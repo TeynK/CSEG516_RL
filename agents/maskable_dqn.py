@@ -52,7 +52,6 @@ class MaskableDQN(DQN):
         mask_tensor = th.as_tensor(action_mask).to(self.device)
         with th.no_grad():
             q_values = self.policy.q_net(obs_tensor)
-            
             masked_q_values = th.where(
                 mask_tensor.bool(),
                 q_values,

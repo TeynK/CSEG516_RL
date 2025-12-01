@@ -1,4 +1,3 @@
-# envs/splendor_wrapper.py
 import numpy as np
 from typing import Tuple, Dict, Any, Optional
 from gymnasium.spaces import Box, Discrete
