@@ -34,7 +34,7 @@ def evaluate(PPO_path, DQN_path, num_games=100):
             "DQN": {"t1": 0, "t2": 0, "t3": 0, "res": 0}
         }
         turns = 0
-        done = False
+
         for agent in env.agent_iter():
             observation, reward, termination, truncation, info = env.last()
             if termination or truncation:

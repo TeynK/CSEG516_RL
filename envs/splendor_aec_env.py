@@ -277,22 +277,24 @@ class SplendorEnv(AECEnv):
         has_no_legal_actions = np.sum(current_mask) == 0
         if action is None:
             if has_no_legal_actions:
-                print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. 게임을 무승부로 종료합니다.")
+                print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. 게임을 기권패로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
-                self.rewards = {agent: 0.0 for agent in self.agents}
-                self.infos = {agent: {"game_winner": None, "deadlock": True} for agent in self.agents}
+                self.rewards = {agent: 0.1 for agent in self.agents}
+                self.rewards[current_agent] = -1.0
+                self.infos = {agent: {"game_winner": -1, "deadlock": True} for agent in self.agents}
             else:
                 print(f"[오류] 에이전트 {current_agent}가 None 행동을 전달했지만 유효한 행동이 있습니다. 턴을 넘깁니다.")
             self.agent_selection = self._agent_selector.next()
             return
         if current_mask[action] == 0:
             if has_no_legal_actions:
-                print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. (행동 {action} 선택됨) 게임을 무승부로 종료합니다.")
+                print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. (행동 {action} 선택됨) 게임을 기권패로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
-                self.rewards = {agent: 0.0 for agent in self.agents}
-                self.infos = {agent: {"game_winner": None, "deadlock": True} for agent in self.agents}
+                self.rewards = {agent: 0.1 for agent in self.agents}
+                self.rewards[current_agent] = -1.0
+                self.infos = {agent: {"game_winner": -1, "deadlock": True} for agent in self.agents}
             else:
                 print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
                 self.truncations = {agent: True for agent in self.agents}

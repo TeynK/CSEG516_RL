@@ -5,14 +5,17 @@ num_cpu: 8
 
 log_dir: "PPO"
 model_dir: "PPO"
-model_name: "maskable_ppo_splendor_vs_bot"
+model_name: "PPO"
 
 total_timesteps: 10000000
 save_interval: 1000000
 
 model_hyperparameters:
-  n_steps: 2048
-  batch_size: 64
-  gamma: 0.99
-
-load_model_path: "results/models/ppo/maskable_ppo_splendor_vs_bot_final.zip"
+  learning_rate: 0.0003     # 3e-4 (Adam Optimizer의 표준, 너무 크면 발산함)
+  n_steps: 2048             # 한 번 업데이트 전 수집할 데이터 양 (길게 가져가는 것이 좋음)
+  batch_size: 512           # [중요] 64는 너무 작음. 256~512 추천 (기울기 노이즈 감소)
+  n_epochs: 10              # 수집된 데이터를 몇 번 재사용하여 학습할지
+  gamma: 0.99               # 미래 보상 할인율 (0.99 = 장기적 전략 중시)
+  gae_lambda: 0.95          # Advantage 추정 시 편향/분산 조절
+  clip_range: 0.2           # 정책이 급격하게 변하는 것을 방지 (PPO 핵심)
+  ent_coef: 0.01            # [핵심] 탐색(Exploration)을 강제하는 엔트로피 계수

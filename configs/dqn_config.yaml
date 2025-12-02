@@ -5,7 +5,7 @@ num_cpu: 8
 
 log_dir: "DQN"
 model_dir: "DQN"
-model_name: "maskable_dqn_splendor_vs_bot"
+model_name: "DQN"
 
 total_timesteps: 10000000
 save_interval: 1000000
@@ -13,9 +13,20 @@ save_interval: 1000000
 policy: "MultiInputPolicy"
 
 model_hyperparameters:
-  buffer_size: 500000
-  learning_starts: 50000
-  batch_size: 32
+  buffer_size: 10000       # RAM이 16GB 이상이라면 100만 추천 (다양한 경험 확보)
+  learning_starts: 1000    # 충분히 데이터가 쌓인 뒤 학습 시작
+  batch_size: 256            # [중요] 32는 너무 작음. 256~512 추천
   gamma: 0.99
-
-load_model_path: ""
+  
+  # --- 안정성 확보를 위한 추가 파라미터 ---
+  learning_rate: 0.0001      # 1e-4. 너무 크면 발산함.
+  tau: 0.005                 # [핵심] Soft Update 계수. (Target Network를 조금씩 업데이트)
+  target_update_interval: 1  # Tau를 쓸 때는 매 스텝 업데이트
+  train_freq: 4              # 4 스텝마다 학습 (데이터 수집 비중을 높임)
+  gradient_steps: 1          # 한 번 학습할 때 1번의 Gradient Descent
+  max_grad_norm: 10          # Gradient Clipping (폭발 방지)
+  
+  # --- 탐색 전략 (Overestimation 보조) ---
+  exploration_fraction: 0.2  # 전체 스텝의 20% 동안 엡실론 감소 (200만 스텝)
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.05 # 최소 5%는 랜덤 행동 유지

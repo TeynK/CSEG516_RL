@@ -26,15 +26,13 @@ class MaskableDQN(DQN):
             real_next_obs = replay_data.next_observations
             next_action_mask = replay_data.next_observations["action_mask"]
             with th.no_grad():
-                next_q_values_main = self.q_net(real_next_obs)
-                masked_next_q_main = th.where(
+                next_q_values_target = self.q_net_target(real_next_obs)
+                masked_next_q_target = th.where(
                     next_action_mask.bool(),
-                    next_q_values_main,
+                    next_q_values_target,
                     th.tensor(-float("inf")).to(self.device)
                 )
-                next_actions = masked_next_q_main.argmax(dim=1).unsqueeze(-1)
-                next_q_values_target = self.q_net_target(real_next_obs)
-                next_q_values = th.gather(next_q_values_target, dim=1, index=next_actions).squeeze(-1)
+                next_q_values, _ = masked_next_q_target.max(dim=1)
                 all_masked = (next_action_mask.float().sum(dim=1) == 0)
                 next_q_values[all_masked] = 0.0
                 next_q_values = next_q_values.reshape(-1, 1)
@@ -52,6 +50,7 @@ class MaskableDQN(DQN):
         mask_tensor = th.as_tensor(action_mask).to(self.device)
         with th.no_grad():
             q_values = self.policy.q_net(obs_tensor)
+            
             masked_q_values = th.where(
                 mask_tensor.bool(),
                 q_values,
