@@ -33,9 +33,9 @@ class SplendorGymWrapper(gym.Env):
             "action_mask": action_mask_space
         })
         
-        # self.bot = HeuristicBot(player_id=1, style=random.choice(["aggressive", "balanced", "defensive"]))
+        self.bot = HeuristicBot(player_id=1, style=random.choice(["aggressive", "balanced", "defensive"]))
         # self.bot = WeakHeuristicBot(player_id=1)
-        self.bot = RandomBot(player_id=1)
+        # self.bot = RandomBot(player_id=1)
         self.agents = ["player_0", "player_1"]
         self.current_action_mask = None
         

@@ -1,31 +1,27 @@
 agent_type: "DQN"
 model_class: "MaskableDQN"
-
-# [중요] 3점~5점 커리큘럼용 짧고 굵은 세팅
-total_timesteps: 100000   # 1천만(X) -> 10만(O). 금방 끝납니다.
-save_interval: 20000
+total_timesteps: 10000000
+save_interval: 1000000   
 
 model_hyperparameters:
-  buffer_size: 50000      # 버퍼 작게 (옛날 데이터 빨리 잊게)
-  learning_starts: 1000   # 1000스텝만 모으고 바로 학습 시작
-  batch_size: 256
-  gamma: 0.95             # 게임이 짧으므로 미래 할인율 낮춤
+  buffer_size: 1000000     
+  learning_starts: 50000   
+  batch_size: 512
   
-  learning_rate: 0.0005   # 학습 속도 5배 업 (0.0001 -> 0.0005)
+  gamma: 0.99             
   
-  # [핵심 1] 타겟 업데이트 빈도 증가
-  target_update_interval: 500 # 자주 업데이트해서 피드백 빠르게
-  tau: 1.0                    # Hard Update
+  learning_rate: 0.0001   
+  
+  target_update_interval: 2000 
+  tau: 1.0
   
   train_freq: 4
   gradient_steps: 1
   max_grad_norm: 10
   
-  # [핵심 2] 탐험 스케줄 압축 (여기가 제일 중요!!!)
-  # 10만 스텝 중 30%(3만 스텝) 만에 엡실론을 0.05로 떨굼
-  exploration_fraction: 0.3  
+  exploration_fraction: 0.5  
   exploration_initial_eps: 1.0
   exploration_final_eps: 0.05
 
   policy_kwargs:
-    net_arch: [256, 256] #
+    net_arch: [256, 256]

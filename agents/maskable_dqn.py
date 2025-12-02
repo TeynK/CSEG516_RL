@@ -1,9 +1,11 @@
 import torch as th
 import numpy as np
+import gymnasium as gym
 from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import DictReplayBuffer
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import polyak_update
+from stable_baselines3.common.noise import ActionNoise
 from typing import Dict, Optional, Tuple
 
 class MaskableDQN(DQN):
@@ -21,7 +23,7 @@ class MaskableDQN(DQN):
     def train(self, gradient_steps: int, batch_size: int = 100) -> None:
         self.policy.set_training_mode(True)
         self._update_learning_rate(self.policy.optimizer)
-
+        self.exploration_rate = self.exploration_schedule(self._current_progress_remaining)
         losses = []
         for _ in range(gradient_steps):
             replay_data: ReplayBufferSamples = self.replay_buffer.sample(batch_size, env=self._vec_normalize_env)
@@ -83,3 +85,25 @@ class MaskableDQN(DQN):
         
         action = action.reshape(-1)
         return action.cpu().numpy(), state
+    
+    def _sample_action(
+        self,
+        learning_starts: int,
+        action_noise: Optional[ActionNoise] = None,
+        n_envs: int = 1,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if self._n_calls < learning_starts or np.random.rand() < self.exploration_rate:
+            unscaled_action = np.array([self._sample_masked_action(self._last_obs["action_mask"][i]) for i in range(n_envs)])
+        else:
+            unscaled_action, _ = self.predict(self._last_obs, deterministic=True)
+            
+        if isinstance(self.action_space, gym.spaces.Box):
+            unscaled_action = np.clip(unscaled_action, self.action_space.low, self.action_space.high)
+        
+        return unscaled_action, unscaled_action
+
+    def _sample_masked_action(self, action_mask: np.ndarray) -> int:
+        valid_indices = np.where(action_mask == 1)[0]
+        if len(valid_indices) > 0:
+            return np.random.choice(valid_indices)
+        return 0

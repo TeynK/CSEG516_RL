@@ -10,7 +10,8 @@ import time
 import gymnasium as gym
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from stable_baselines3.common.utils import set_random_seed
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 
@@ -254,6 +255,19 @@ class RichStatsCallback(BaseCallback):
         self.console.print(f"[bold green]Analysis plot saved to {plot_file}[/bold green]")
         plt.close()
 
+def make_env(rank: int, seed: int = 0):
+    """
+    멀티프로세싱을 위한 환경 생성 함수
+    """
+    def _init():
+        env = SplendorGymWrapper()
+        env = Monitor(env)
+        env = ActionMasker(env, lambda env: env.unwrapped.action_mask())
+        env.reset(seed=seed + rank) # 각 환경마다 다른 시드 적용
+        return env
+    set_random_seed(seed)
+    return _init
+
 def load_config(model_type):
     config_path = f"configs/{model_type.lower()}_config.yaml"
     if not os.path.exists(config_path):
@@ -266,6 +280,8 @@ def load_config(model_type):
 def main():
     parser = argparse.ArgumentParser(description="Train Splendor RL Agent")
     parser.add_argument("--model", type=str, required=True, choices=["PPO", "DQN"], help="Model type to train")
+    # [수정 3] n_envs 인자 추가 (CPU 코어 수 설정)
+    parser.add_argument("--n_envs", type=int, default=4, help="Number of parallel environments (default: 4)")
     args = parser.parse_args()
 
     model_type = args.model.upper()
@@ -281,17 +297,20 @@ def main():
     model_name = model_type + "_vs_bot_final.zip"
     model_path = os.path.join(model_save_dir, model_name)
 
-    def make_env():
-        env = SplendorGymWrapper()
-        env = Monitor(env)
-        env = ActionMasker(env, lambda env: env.unwrapped.action_mask())
-        return env
-
-    env = DummyVecEnv([make_env])
-    model_hyperparams = config.get("model_hyperparameters", {})
-    
+    # [수정 4] 벡터화 환경 생성 (병렬 처리)
     console = Console()
     console.print(f"\n[bold blue][{model_type}] Training Start...[/bold blue]")
+    console.print(f"Parallel Environments: {args.n_envs}")
+    
+    if args.n_envs > 1:
+        # 멀티코어 사용 시 SubprocVecEnv
+        env = SubprocVecEnv([make_env(i) for i in range(args.n_envs)])
+    else:
+        # 단일 코어 사용 시 DummyVecEnv (디버깅 용이)
+        env = DummyVecEnv([make_env(0)])
+
+    model_hyperparams = config.get("model_hyperparameters", {})
+    
     console.print(f"Save Directory: {model_save_dir}")
 
     if os.path.exists(model_path):
@@ -311,7 +330,7 @@ def main():
         total_timesteps=total_timesteps,
         check_freq=1000, 
         win_rate_threshold=0.80,
-        required_stable_episodes=50  # [설정] 여기서 '50판 연속'으로 설정함
+        required_stable_episodes=50 
     )
 
     try:
@@ -325,6 +344,8 @@ def main():
     finally:
         if stats_callback.live:
             stats_callback.live.stop()
+        # [수정 5] 멀티프로세스 종료 처리
+        env.close()
 
     console.print(f"Saving model to {model_path}...", style="bold cyan")
     model.save(model_path)

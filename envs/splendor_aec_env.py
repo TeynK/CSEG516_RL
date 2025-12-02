@@ -277,7 +277,7 @@ class SplendorEnv(AECEnv):
         has_no_legal_actions = np.sum(current_mask) == 0
         if action is None:
             if has_no_legal_actions:
-                print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. 게임을 기권패로 종료합니다.")
+                # print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. 게임을 기권패로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
                 self.rewards = {agent: 0.1 for agent in self.agents}
@@ -289,21 +289,21 @@ class SplendorEnv(AECEnv):
             return
         if current_mask[action] == 0:
             if has_no_legal_actions:
-                print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. (행동 {action} 선택됨) 게임을 기권패로 종료합니다.")
+                # print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. (행동 {action} 선택됨) 게임을 기권패로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
                 self.rewards = {agent: 0.1 for agent in self.agents}
                 self.rewards[current_agent] = -1.0
                 self.infos = {agent: {"game_winner": -1, "deadlock": True} for agent in self.agents}
             else:
-                print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
+                # print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
                 self.truncations = {agent: True for agent in self.agents}
                 self.infos[current_agent]["error"] = "Invalid action submitted."
 
             self.agent_selection = self._agent_selector.next()
             return
         if current_mask[action] == 0:
-            print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
+            # print(f"[경고] 에이전트 {current_agent}가 유효하지 않은 행동({action})을 선택했습니다.")
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Invalid action submitted."
             self.agent_selection = self._agent_selector.next()
@@ -332,19 +332,19 @@ class SplendorEnv(AECEnv):
             if final_action.action_type == ActionType.BUY_CARD:
                 can_afford, _ = player.get_payment_details(final_action.card)
                 if not can_afford:
-                    print("\n--- DEBUG: POTENTIAL VALUE ERROR (SYNC FIX APPLIED) ---")
-                    print(f"Agent: {current_agent}")
-                    print(f"Action: {final_action}")
-                    print(f"Card to buy: {final_action.card}")
-                    print(f"Card cost: {final_action.card.cost}")
-                    print(f"Player Gems: {player.gems}")
-                    print(f"Player Bonuses: {player.bonuses}")
-                    print(f"Calculated can_afford: {can_afford}")
-                    print("--- END DEBUG ---\n")
+                    # print("\n--- DEBUG: POTENTIAL VALUE ERROR (SYNC FIX APPLIED) ---")
+                    # print(f"Agent: {current_agent}")
+                    # print(f"Action: {final_action}")
+                    # print(f"Card to buy: {final_action.card}")
+                    # print(f"Card cost: {final_action.card.cost}")
+                    # print(f"Player Gems: {player.gems}")
+                    # print(f"Player Bonuses: {player.bonuses}")
+                    # print(f"Calculated can_afford: {can_afford}")
+                    # print("--- END DEBUG ---\n")
                     raise ValueError("마스크와 실제 'can_afford' 상태가 일치하지 않습니다. (SYNC FIX 후에도 발생)")
             is_game_over = self.game.step(final_action)
         except (IndexError, ValueError, TypeError) as e:
-            print(f"[오류] Action 객체 생성 또는 step 실행 중 오류: {template_action} (오류: {e})")
+            # print(f"[오류] Action 객체 생성 또는 step 실행 중 오류: {template_action} (오류: {e})")
             self.truncations = {agent: True for agent in self.agents}
             self.infos[current_agent]["error"] = "Action object creation or step execution error"
             self.agent_selection = self._agent_selector.next()
@@ -374,14 +374,14 @@ class SplendorEnv(AECEnv):
             current_player_id = self.agents.index(self.agent_selection)
             self.game.current_player_index = current_player_id
             current_player = self.game.get_current_player()
-            print("\n" + "="*60)
-            print(f"--- 턴: {self.game.current_player_index}, "
-                  f"현재 에이전트: player_{current_player.player_id} ({self.game.current_player_state}) ---")
-            print(self.game.board)
+            # print("\n" + "="*60)
+            # print(f"--- 턴: {self.game.current_player_index}, "
+                #   f"현재 에이전트: player_{current_player.player_id} ({self.game.current_player_state}) ---")
+            # print(self.game.board)
             for i in range(self.num_players):
                 player = self.game.players[i]
-                print(player)
-            print("="*60)
+                # print(player)
+            # print("="*60)
 
     def action_space(self, agent: str) -> Discrete:
         return self.action_spaces[agent]
