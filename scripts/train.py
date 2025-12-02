@@ -25,15 +25,21 @@ from envs.splendor_gym_wrapper import SplendorGymWrapper
 from agents.maskable_dqn import MaskableDQN
 
 class RichStatsCallback(BaseCallback):
-    def __init__(self, total_timesteps: int, check_freq: int, win_rate_threshold: float = 0.60, verbose=1):
+    def __init__(self, total_timesteps: int, check_freq: int, win_rate_threshold: float = 0.60, required_stable_episodes: int = 50, verbose=1):
+        """
+        required_stable_episodes (int): 목표 승률 이상을 '연속으로' 유지해야 하는 에피소드 수
+        """
         super(RichStatsCallback, self).__init__(verbose)
         self.total_timesteps = total_timesteps
         self.check_freq = check_freq
         self.win_rate_threshold = win_rate_threshold
         
+        # [추가] 안정성 검증을 위한 변수
+        self.required_stable_episodes = required_stable_episodes
+        self.stability_counter = 0  # 현재 연속 유지 횟수
+        
         self.recent_results = deque(maxlen=100)
         
-        # [수정] 'agent_avg_card_level' 제거하고 티어별 키로 대체
         self.stats_history = {
             "episode": [], "win_rate": [], 
             "agent_score": [], "agent_turns": [], "agent_nobles": [],
@@ -90,7 +96,16 @@ class RichStatsCallback(BaseCallback):
         table.add_row("Total Episodes", str(self.episode_count))
         table.add_row("Current Timesteps", f"{self.num_timesteps:,}")
         table.add_row("FPS", str(fps))
-        table.add_row("Win Rate (Last 100)", f"{self.current_win_rate * 100:.1f}%")
+        
+        # 승률 색상 처리
+        win_rate_str = f"{self.current_win_rate * 100:.1f}%"
+        if self.current_win_rate >= self.win_rate_threshold:
+            win_rate_str = f"[bold green]{win_rate_str}[/]"
+        table.add_row("Win Rate (Last 100)", win_rate_str)
+        
+        # [추가] 안정성 진행 상황 표시
+        stability_color = "green" if self.stability_counter > 0 else "white"
+        table.add_row("Stability Progress", f"[{stability_color}]{self.stability_counter}/{self.required_stable_episodes}[/]")
         
         result_color = "green" if self.last_game_result == "WIN" else "red" if self.last_game_result == "LOSE" else "white"
         table.add_row("Last Game Result", f"[{result_color}]{self.last_game_result}[/]")
@@ -155,17 +170,23 @@ class RichStatsCallback(BaseCallback):
                     self.stats_history["agent_turns"].append(agent_stats['turn_count'])
                     self.stats_history["agent_nobles"].append(agent_stats['noble_count'])
                     
-                    # [수정] avg_card_level을 찾는 줄을 삭제하고, 새 키들을 사용
                     self.stats_history["agent_total_cards"].append(agent_stats['total_cards'])
                     self.stats_history["agent_t1"].append(agent_stats['tier_1_count'])
                     self.stats_history["agent_t2"].append(agent_stats['tier_2_count'])
                     self.stats_history["agent_t3"].append(agent_stats['tier_3_count'])
-                    
                     self.stats_history["agent_reserve_count"].append(agent_stats['reserved_count'])
 
+                    # [핵심 로직 수정] 승률 안정성 체크
+                    # 1. 버퍼가 꽉 찼는지(100판) & 2. 승률이 목표 이상인지
                     if len(self.recent_results) >= 100 and self.current_win_rate >= self.win_rate_threshold:
+                        self.stability_counter += 1
+                    else:
+                        self.stability_counter = 0  # 조건 깨지면 즉시 리셋 (엄격한 기준)
+
+                    # [종료 조건] 목표 횟수만큼 유지했다면 종료
+                    if self.stability_counter >= self.required_stable_episodes:
                         if self.live: self.live.stop()
-                        self.console.print(f"\n[bold green]Target Win Rate Reached: {self.current_win_rate*100:.1f}%[/bold green]")
+                        self.console.print(f"\n[bold green]Goal Reached! Win Rate {self.current_win_rate*100:.1f}% maintained for {self.required_stable_episodes} episodes.[/bold green]")
                         return False
 
         if self.live:
@@ -289,7 +310,8 @@ def main():
     stats_callback = RichStatsCallback(
         total_timesteps=total_timesteps,
         check_freq=1000, 
-        win_rate_threshold=0.60
+        win_rate_threshold=0.80,
+        required_stable_episodes=50  # [설정] 여기서 '50판 연속'으로 설정함
     )
 
     try:

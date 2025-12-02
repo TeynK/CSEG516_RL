@@ -1,32 +1,31 @@
 agent_type: "DQN"
 model_class: "MaskableDQN"
 
-num_cpu: 8
-
-log_dir: "DQN"
-model_dir: "DQN"
-model_name: "DQN"
-
-total_timesteps: 10000000
-save_interval: 1000000
-
-policy: "MultiInputPolicy"
+# [중요] 3점~5점 커리큘럼용 짧고 굵은 세팅
+total_timesteps: 100000   # 1천만(X) -> 10만(O). 금방 끝납니다.
+save_interval: 20000
 
 model_hyperparameters:
-  buffer_size: 10000       # RAM이 16GB 이상이라면 100만 추천 (다양한 경험 확보)
-  learning_starts: 1000    # 충분히 데이터가 쌓인 뒤 학습 시작
-  batch_size: 256            # [중요] 32는 너무 작음. 256~512 추천
-  gamma: 0.99
+  buffer_size: 50000      # 버퍼 작게 (옛날 데이터 빨리 잊게)
+  learning_starts: 1000   # 1000스텝만 모으고 바로 학습 시작
+  batch_size: 256
+  gamma: 0.95             # 게임이 짧으므로 미래 할인율 낮춤
   
-  # --- 안정성 확보를 위한 추가 파라미터 ---
-  learning_rate: 0.0001      # 1e-4. 너무 크면 발산함.
-  tau: 0.005                 # [핵심] Soft Update 계수. (Target Network를 조금씩 업데이트)
-  target_update_interval: 1  # Tau를 쓸 때는 매 스텝 업데이트
-  train_freq: 4              # 4 스텝마다 학습 (데이터 수집 비중을 높임)
-  gradient_steps: 1          # 한 번 학습할 때 1번의 Gradient Descent
-  max_grad_norm: 10          # Gradient Clipping (폭발 방지)
+  learning_rate: 0.0005   # 학습 속도 5배 업 (0.0001 -> 0.0005)
   
-  # --- 탐색 전략 (Overestimation 보조) ---
-  exploration_fraction: 0.2  # 전체 스텝의 20% 동안 엡실론 감소 (200만 스텝)
+  # [핵심 1] 타겟 업데이트 빈도 증가
+  target_update_interval: 500 # 자주 업데이트해서 피드백 빠르게
+  tau: 1.0                    # Hard Update
+  
+  train_freq: 4
+  gradient_steps: 1
+  max_grad_norm: 10
+  
+  # [핵심 2] 탐험 스케줄 압축 (여기가 제일 중요!!!)
+  # 10만 스텝 중 30%(3만 스텝) 만에 엡실론을 0.05로 떨굼
+  exploration_fraction: 0.3  
   exploration_initial_eps: 1.0
-  exploration_final_eps: 0.05 # 최소 5%는 랜덤 행동 유지
+  exploration_final_eps: 0.05
+
+  policy_kwargs:
+    net_arch: [256, 256] #

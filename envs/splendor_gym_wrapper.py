@@ -3,9 +3,12 @@ from gymnasium.spaces import Dict, Box
 import numpy as np
 from pettingzoo.utils.env import AECEnv
 from typing import Any
+import random
 
 from envs.splendor_aec_env import env as splendor_aec_env
 from agents.heuristic_bot import HeuristicBot
+from agents.random_bot import RandomBot
+from agents.weak_heuristic_bot import WeakHeuristicBot
 from splendor_game.actions import get_legal_return_gems_actions
 from splendor_game.actions import Action, ActionType 
 
@@ -30,7 +33,9 @@ class SplendorGymWrapper(gym.Env):
             "action_mask": action_mask_space
         })
         
-        self.bot = HeuristicBot(player_id=1)
+        # self.bot = HeuristicBot(player_id=1, style=random.choice(["aggressive", "balanced", "defensive"]))
+        # self.bot = WeakHeuristicBot(player_id=1)
+        self.bot = RandomBot(player_id=1)
         self.agents = ["player_0", "player_1"]
         self.current_action_mask = None
         
