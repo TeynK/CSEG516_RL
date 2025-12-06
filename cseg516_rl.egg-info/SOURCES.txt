@@ -1,11 +1,9 @@
 setup.py
 agents/__init__.py
-agents/baselines/__init__.py
-agents/baselines/heuristic_bot.py
-agents/baselines/random_bot.py
-agents/dqn/__init__.py
-agents/ppo/__init__.py
-agents/ppo/network.py
+agents/heuristic_bot.py
+agents/maskable_dqn.py
+agents/random_bot.py
+agents/weak_heuristic_bot.py
 configs/__init__.py
 cseg516_rl.egg-info/PKG-INFO
 cseg516_rl.egg-info/SOURCES.txt
@@ -16,7 +14,8 @@ envs/splendor_aec_env.py
 envs/splendor_gym_wrapper.py
 envs/splendor_test.py
 scripts/__init__.py
-scripts/evaluate.py
+scripts/bot_evaluate.py
+scripts/estimate.py
 scripts/train.py
 splendor_game/__init__.py
 splendor_game/actions.py
