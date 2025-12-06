@@ -280,7 +280,7 @@ class SplendorEnv(AECEnv):
                 # print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. 게임을 기권패로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
-                self.rewards = {agent: 0.1 for agent in self.agents}
+                self.rewards = {agent: -1 for agent in self.agents}
                 self.rewards[current_agent] = -1.0
                 self.infos = {agent: {"game_winner": -1, "deadlock": True} for agent in self.agents}
             else:
@@ -292,7 +292,7 @@ class SplendorEnv(AECEnv):
                 # print(f"[경고] 에이전트 {current_agent}가 행동 불능(deadlock) 상태입니다. (행동 {action} 선택됨) 게임을 기권패로 종료합니다.")
                 self.terminations = {agent: True for agent in self.agents}
                 self.truncations = {agent: True for agent in self.agents}
-                self.rewards = {agent: 0.1 for agent in self.agents}
+                self.rewards = {agent: -1 for agent in self.agents}
                 self.rewards[current_agent] = -1.0
                 self.infos = {agent: {"game_winner": -1, "deadlock": True} for agent in self.agents}
             else:

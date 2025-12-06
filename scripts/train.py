@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,6 +9,8 @@ from collections import deque
 import time
 
 import gymnasium as gym
+import torch as th
+
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -22,22 +25,22 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 from envs.splendor_gym_wrapper import SplendorGymWrapper
 from agents.maskable_dqn import MaskableDQN
 
 class RichStatsCallback(BaseCallback):
-    def __init__(self, total_timesteps: int, check_freq: int, win_rate_threshold: float = 0.60, required_stable_episodes: int = 50, verbose=1):
-        """
-        required_stable_episodes (int): 목표 승률 이상을 '연속으로' 유지해야 하는 에피소드 수
-        """
+    def __init__(self, total_timesteps: int, check_freq: int, verbose=1):
         super(RichStatsCallback, self).__init__(verbose)
         self.total_timesteps = total_timesteps
         self.check_freq = check_freq
-        self.win_rate_threshold = win_rate_threshold
-        
-        # [추가] 안정성 검증을 위한 변수
-        self.required_stable_episodes = required_stable_episodes
-        self.stability_counter = 0  # 현재 연속 유지 횟수
+        self.best_win_rate = -float('inf')
+        self.save_path = os.path.join("results", "models", "best_model")
+        os.makedirs(self.save_path, exist_ok=True)
         
         self.recent_results = deque(maxlen=100)
         
@@ -98,15 +101,11 @@ class RichStatsCallback(BaseCallback):
         table.add_row("Current Timesteps", f"{self.num_timesteps:,}")
         table.add_row("FPS", str(fps))
         
-        # 승률 색상 처리
         win_rate_str = f"{self.current_win_rate * 100:.1f}%"
-        if self.current_win_rate >= self.win_rate_threshold:
-            win_rate_str = f"[bold green]{win_rate_str}[/]"
         table.add_row("Win Rate (Last 100)", win_rate_str)
         
-        # [추가] 안정성 진행 상황 표시
-        stability_color = "green" if self.stability_counter > 0 else "white"
-        table.add_row("Stability Progress", f"[{stability_color}]{self.stability_counter}/{self.required_stable_episodes}[/]")
+        best_str = f"{self.best_win_rate * 100:.1f}%"
+        table.add_row("Best Win Rate", f"[bold green]{best_str}[/]")
         
         result_color = "green" if self.last_game_result == "WIN" else "red" if self.last_game_result == "LOSE" else "white"
         table.add_row("Last Game Result", f"[{result_color}]{self.last_game_result}[/]")
@@ -177,18 +176,9 @@ class RichStatsCallback(BaseCallback):
                     self.stats_history["agent_t3"].append(agent_stats['tier_3_count'])
                     self.stats_history["agent_reserve_count"].append(agent_stats['reserved_count'])
 
-                    # [핵심 로직 수정] 승률 안정성 체크
-                    # 1. 버퍼가 꽉 찼는지(100판) & 2. 승률이 목표 이상인지
-                    if len(self.recent_results) >= 100 and self.current_win_rate >= self.win_rate_threshold:
-                        self.stability_counter += 1
-                    else:
-                        self.stability_counter = 0  # 조건 깨지면 즉시 리셋 (엄격한 기준)
-
-                    # [종료 조건] 목표 횟수만큼 유지했다면 종료
-                    if self.stability_counter >= self.required_stable_episodes:
-                        if self.live: self.live.stop()
-                        self.console.print(f"\n[bold green]Goal Reached! Win Rate {self.current_win_rate*100:.1f}% maintained for {self.required_stable_episodes} episodes.[/bold green]")
-                        return False
+                    if len(self.recent_results) >= 100:
+                        if self.current_win_rate > self.best_win_rate:
+                            self.best_win_rate = self.current_win_rate
 
         if self.live:
             layout = self.live.get_renderable()
@@ -205,22 +195,16 @@ class RichStatsCallback(BaseCallback):
         fig, axs = plt.subplots(2, 3, figsize=(18, 10))
         fig.suptitle(f'Training Analysis: {model_name} (RL Agent)', fontsize=16)
 
-        # 1. Win Rate
         axs[0, 0].plot(self.stats_history["episode"], self.stats_history["win_rate"], color='blue')
-        axs[0, 0].axhline(y=self.win_rate_threshold, color='r', linestyle='--', label='Threshold')
         axs[0, 0].set_title('Win Rate Trend')
-        axs[0, 0].legend()
 
-        # 2. Score Distribution
         axs[0, 1].hist(self.stats_history["agent_score"], bins=range(0, 20), color='green', alpha=0.7)
         axs[0, 1].set_title('Final Score Distribution')
 
-        # 3. Turns (Game Duration)
         axs[0, 2].plot(self.stats_history["episode"], self.stats_history["agent_turns"], color='brown', alpha=0.5)
         axs[0, 2].set_title('Game Duration (Turns)')
         axs[0, 2].invert_yaxis()
 
-        # 4. Card Composition (Tier 1, 2, 3) - Rolling Average
         def moving_average(a, n=50):
             ret = np.cumsum(a, dtype=float)
             ret[n:] = ret[n:] - ret[:-n]
@@ -241,11 +225,9 @@ class RichStatsCallback(BaseCallback):
         else:
             axs[1, 0].text(0.5, 0.5, 'Need > 50 episodes', ha='center')
 
-        # 5. Reserved Cards
         axs[1, 1].plot(self.stats_history["episode"], self.stats_history["agent_reserve_count"], color='purple', alpha=0.5)
         axs[1, 1].set_title('Reserved Cards Count')
 
-        # 6. Nobles Won
         axs[1, 2].plot(self.stats_history["episode"], self.stats_history["agent_nobles"], color='gold', alpha=0.8)
         axs[1, 2].set_title('Nobles Acquired')
 
@@ -256,20 +238,20 @@ class RichStatsCallback(BaseCallback):
         plt.close()
 
 def make_env(rank: int, seed: int = 0):
-    """
-    멀티프로세싱을 위한 환경 생성 함수
-    """
     def _init():
         env = SplendorGymWrapper()
         env = Monitor(env)
         env = ActionMasker(env, lambda env: env.unwrapped.action_mask())
-        env.reset(seed=seed + rank) # 각 환경마다 다른 시드 적용
+        env.reset(seed=seed + rank) 
         return env
     set_random_seed(seed)
     return _init
 
 def load_config(model_type):
-    config_path = f"configs/{model_type.lower()}_config.yaml"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    config_path = os.path.join(project_root, "configs", f"{model_type.lower()}_config.yaml")
+    
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
     
@@ -280,57 +262,86 @@ def load_config(model_type):
 def main():
     parser = argparse.ArgumentParser(description="Train Splendor RL Agent")
     parser.add_argument("--model", type=str, required=True, choices=["PPO", "DQN"], help="Model type to train")
-    # [수정 3] n_envs 인자 추가 (CPU 코어 수 설정)
-    parser.add_argument("--n_envs", type=int, default=4, help="Number of parallel environments (default: 4)")
+    parser.add_argument("--n_envs", type=int, default=None, help="Number of parallel environments (Overrides config)")
     args = parser.parse_args()
-
     model_type = args.model.upper()
-    config = load_config(model_type)
+    console = Console()
+    try:
+        config = load_config(model_type)
+        console.print(f"[green]Loaded config for {model_type}[/green]")
+    except Exception as e:
+        console.print(f"[red]Error loading config: {e}[/red]")
+        return
+
+    if args.n_envs is not None:
+        n_envs = args.n_envs
+    else:
+        n_envs = config.get("num_cpu", 4)
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    total_timesteps = config.get("total_timesteps", 1000000)
-    model_name_base = config.get("model_name", f"splendor_{model_type.lower()}")
-    model_save_dir = os.path.join("results", "models", model_name_base)
-    plot_save_dir = os.path.join("results", "plots")
+    yaml_model_dir = config.get("model_dir", "results/models")
+    if not os.path.isabs(yaml_model_dir):
+        model_save_dir = os.path.join(project_root, yaml_model_dir)
+    else:
+        model_save_dir = yaml_model_dir
+        
+    yaml_log_dir = config.get("log_dir", "results/logs")
+    if not os.path.isabs(yaml_log_dir):
+        tensorboard_log_dir = os.path.join(project_root, yaml_log_dir)
+    else:
+        tensorboard_log_dir = yaml_log_dir
+
+    model_name_base = config.get("model_name", f"{model_type}_vs_bot")
     
     os.makedirs(model_save_dir, exist_ok=True)
+    os.makedirs(tensorboard_log_dir, exist_ok=True)
+    plot_save_dir = os.path.join(project_root, "results", "plots")
     os.makedirs(plot_save_dir, exist_ok=True)
-    model_name = model_type + "_vs_bot_final.zip"
-    model_path = os.path.join(model_save_dir, model_name)
 
-    # [수정 4] 벡터화 환경 생성 (병렬 처리)
-    console = Console()
+    model_path = os.path.join(model_save_dir, f"{model_name_base}_final.zip")
+
     console.print(f"\n[bold blue][{model_type}] Training Start...[/bold blue]")
-    console.print(f"Parallel Environments: {args.n_envs}")
+    console.print(f"Parallel Environments: {n_envs}")
+    console.print(f"TensorBoard Logs: {tensorboard_log_dir}")
+    console.print(f"Model Save Path: {model_path}")
     
-    if args.n_envs > 1:
-        # 멀티코어 사용 시 SubprocVecEnv
-        env = SubprocVecEnv([make_env(i) for i in range(args.n_envs)])
+    if n_envs > 1:
+        env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
     else:
-        # 단일 코어 사용 시 DummyVecEnv (디버깅 용이)
         env = DummyVecEnv([make_env(0)])
 
     model_hyperparams = config.get("model_hyperparameters", {})
-    
-    console.print(f"Save Directory: {model_save_dir}")
+    total_timesteps = config.get("total_timesteps", 1000000)
 
     if os.path.exists(model_path):
-        console.print(f"Loading existing model from {model_path}", style="yellow")
+        console.print(f"[yellow]Loading existing model from {model_path}[/yellow]")
         if model_type == "PPO":
-            model = MaskablePPO.load(model_path, env=env)
+            model = MaskablePPO.load(model_path, env=env, tensorboard_log=tensorboard_log_dir, **model_hyperparams)
         elif model_type == "DQN":
-            model = MaskableDQN.load(model_path, env=env)
+            model = MaskableDQN.load(model_path, env=env, tensorboard_log=tensorboard_log_dir, **model_hyperparams)
     else:
-        console.print("Creating new model...", style="green")
+        console.print("[green]Creating new model...[/green]")
         if model_type == "PPO":
-            model = MaskablePPO("MultiInputPolicy", env, verbose=0, tensorboard_log="results/logs", **model_hyperparams)
+            model = MaskablePPO(
+                "MultiInputPolicy", 
+                env, 
+                verbose=0, 
+                tensorboard_log=tensorboard_log_dir, 
+                **model_hyperparams
+            )
         elif model_type == "DQN":
-            model = MaskableDQN("MultiInputPolicy", env, verbose=0, tensorboard_log="results/logs", **model_hyperparams)
+            model = MaskableDQN(
+                "MultiInputPolicy", 
+                env, 
+                verbose=0, 
+                tensorboard_log=tensorboard_log_dir, 
+                **model_hyperparams
+            )
 
     stats_callback = RichStatsCallback(
         total_timesteps=total_timesteps,
-        check_freq=1000, 
-        win_rate_threshold=0.80,
-        required_stable_episodes=50 
+        check_freq=1000
     )
 
     try:
@@ -344,13 +355,12 @@ def main():
     finally:
         if stats_callback.live:
             stats_callback.live.stop()
-        # [수정 5] 멀티프로세스 종료 처리
         env.close()
 
     console.print(f"Saving model to {model_path}...", style="bold cyan")
     model.save(model_path)
-    model_name = model_type + "_vs_bot"
-    stats_callback.save_plots(plot_save_dir, model_name)
+    
+    stats_callback.save_plots(plot_save_dir, model_name_base)
     console.print("[bold green]Training Finished.[/bold green]")
 
 if __name__ == "__main__":

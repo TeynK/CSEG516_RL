@@ -38,8 +38,7 @@ class SplendorGymWrapper(gym.Env):
         # self.bot = RandomBot(player_id=1)
         self.agents = ["player_0", "player_1"]
         self.current_action_mask = None
-        
-        # 통계용 변수
+
         self.turns = 0
 
     def action_mask(self) -> np.ndarray:
@@ -117,7 +116,7 @@ class SplendorGymWrapper(gym.Env):
         
         self.aec_env.step(final_action_to_env)
         game_over = self._run_bot_turn()
-        self.turns += 1 # 턴 증가
+        self.turns += 1
 
         observation_array = self._get_obs(ai_agent) 
         reward = self.aec_env.rewards[ai_agent]
@@ -131,13 +130,11 @@ class SplendorGymWrapper(gym.Env):
 
         self.current_action_mask = info.get("action_mask")
         
-        # [데이터 수집 로직]
         if termination or truncation:
             game = self.aec_env.game
             agent_player = game.players[0]
             
             cards = agent_player.cards
-            # 티어별 카드 수 계산
             tier_1_cnt = sum(1 for c in cards if c.level == 1)
             tier_2_cnt = sum(1 for c in cards if c.level == 2)
             tier_3_cnt = sum(1 for c in cards if c.level == 3)
@@ -162,6 +159,8 @@ class SplendorGymWrapper(gym.Env):
 
     def reset(self, seed=None, options=None):
         self.turns = 0 # 턴 초기화
+        new_style = random.choice(["aggressive", "balanced", "defensive"])
+        self.bot = HeuristicBot(player_id=1, style=new_style)
         self.aec_env.reset(seed=seed)
         if self.aec_env.agent_selection != "player_0":
             self._run_bot_turn()

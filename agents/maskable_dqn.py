@@ -72,7 +72,6 @@ class MaskableDQN(DQN):
             )
             exploitation_actions = masked_q_values.argmax(dim=1)
 
-        # Epsilon-Greedy 탐색
         if not deterministic and np.random.rand() < self.exploration_rate:
             float_mask = mask_tensor.float()
             all_invalid_mask = (float_mask.sum(dim=1) == 0)

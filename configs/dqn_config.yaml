@@ -1,27 +1,44 @@
+# configs/dqn_config.yaml
+
+# [기본 설정]
 agent_type: "DQN"
 model_class: "MaskableDQN"
-total_timesteps: 10000000
-save_interval: 1000000   
 
+# [환경 설정]
+# DQN은 메모리 사용량이 큼. RAM 용량에 따라 조절 (4~8 권장)
+num_cpu: 8  
+
+# [경로 설정]
+log_dir: "results/logs/DQN"
+model_dir: "results/models/DQN"
+model_name: "DQN_vs_bot"
+
+# [학습 스케줄]
+total_timesteps: 2000000
+save_interval: 1000000
+
+# [모델 하이퍼파라미터 (Custom MaskableDQN)]
 model_hyperparameters:
-  buffer_size: 1000000     
-  learning_starts: 50000   
-  batch_size: 512
+  buffer_size: 1000000     # 리플레이 버퍼 크기 (클수록 다양한 경험 보존)
+  learning_starts: 50000   # 학습 시작 전 랜덤 행동으로 버퍼를 채울 스텝 수
   
-  gamma: 0.99             
+  batch_size: 512          # 배치 크기 (안정적인 기울기 추정을 위해 크게 설정)
+  gamma: 0.99              # 할인율
   
-  learning_rate: 0.0001   
+  learning_rate: 0.0001    # 1e-4 (DQN은 PPO보다 약간 낮게 잡는 것이 일반적)
   
-  target_update_interval: 2000 
-  tau: 1.0
+  target_update_interval: 2000  # 타겟 네트워크 업데이트 주기 (너무 짧으면 발산 위험)
+  tau: 1.0                 # Hard Update (1.0) 또는 Soft Update (<1.0)
   
-  train_freq: 4
-  gradient_steps: 1
-  max_grad_norm: 10
+  train_freq: 4            # 4 스텝마다 1번 학습 (연산 부하 조절)
+  gradient_steps: 1        # 1번 학습 시 기울기 업데이트 횟수
   
-  exploration_fraction: 0.5  
-  exploration_initial_eps: 1.0
-  exploration_final_eps: 0.05
+  # [탐색 전략 (Epsilon-Greedy)]
+  exploration_fraction: 0.1     # 전체 학습 기간의 50% 동안 엡실론 감소
+  exploration_initial_eps: 1.0  # 초기 탐색 확률 (100% 랜덤)
+  exploration_final_eps: 0.05   # 최종 탐색 확률 (5% 랜덤 유지)
+  
+  max_grad_norm: 10        # 기울기 클리핑
 
   policy_kwargs:
-    net_arch: [256, 256]
+    net_arch: [256, 256]   # 신경망 구조
