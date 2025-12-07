@@ -26,7 +26,7 @@
 
 실험 결과, 두 에이전트는 약 50:50으로 대등한 승률을 보였으나, **승리를 쟁취하는 과정(Quality of Victory)**과 **전략의 결**은 극명하게 갈렸습니다.
 
-### 📊 전략적 성향 프로파일링 (Strategic Profiling)
+###  전략적 성향 프로파일링 (Strategic Profiling)
 
 | Feature | **PPO Agent** | **DQN Agent** |
 | :--- | :--- | :--- |
