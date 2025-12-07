@@ -158,7 +158,7 @@ class SplendorGymWrapper(gym.Env):
         return observation_dict, reward, termination, truncation, info
 
     def reset(self, seed=None, options=None):
-        self.turns = 0 # 턴 초기화
+        self.turns = 0
         new_style = random.choice(["aggressive", "balanced", "defensive"])
         self.bot = HeuristicBot(player_id=1, style=new_style)
         self.aec_env.reset(seed=seed)
