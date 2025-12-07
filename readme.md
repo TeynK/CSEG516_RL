@@ -53,12 +53,3 @@ py -m scripts.estimate --games 100
 ```
 tensorboard --logdir results/logs
 ```
-6. 수학적 배경 (Mathematical Background)
-Maskable DQN
-    기존 DQN의 $Q(s, a)$ 함수 업데이트 시, 유효하지 않은 액션(invalid actions)을 마스킹하여 탐색 효율성을 높였습니다.
-    $$Q_{target} = r + \gamma \max_{a' \in \mathcal{A}_{valid}} Q(s', a'; \theta^{-})$$
-    여기서 $\mathcal{A}_{valid}$는 현재 상태 $s'$에서 가능한 유효 액션 집합을 의미합니다.
-PPO (Proximal Policy Optimization)
-    정책 업데이트 시 급격한 변화를 방지하기 위해 Clipped Objective를 사용합니다.
-    $$L^{CLIP}(\theta) = \hat{\mathbb{E}}_t [\min(r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t)]$$
-    이때 $r_t(\theta)$는 확률 비율(probability ratio), $\hat{A}_t$는 어드밴티지 함수(advantage function) 추정값입니다.
