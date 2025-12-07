@@ -10,8 +10,8 @@
 ###  연구 목표: 수학적 성향에서 전략적 성격으로
 강화학습 알고리즘은 고유의 손실 함수(Loss Function)와 학습 메커니즘에 따라 서로 다른 **'수학적 성향(Mathematical Disposition)'**을 내포합니다. 본 연구는 이러한 이론적 특성이 자원 관리와 레이싱 요소가 결합된 복잡한 환경인 Splendor에서 인간이 해석 가능한 **구체적 전략(Strategic Personality)**으로 전이(Transfer)되는 과정을 규명합니다.
 
-*   **On-Policy (PPO):** 학습 신호의 신뢰성을 중시하는 특성이 **'안정적 엔진 빌딩'** 전략으로 수렴하는가?
-*   **Off-Policy (DQN):** 과거 경험을 재사용하며 낙관적 가치 추정을 하는 특성이 **'고위험-고수익(High-Risk)'** 전략으로 수렴하는가?
+*   **On-Policy (PPO):** 학습 신호의 신뢰성을 중시하는 특성이 **저분산 안정적** 점수 분포를 가지게 하는가?
+*   **Off-Policy (DQN):** 과거 경험을 재사용하며 낙관적 가치 추정을 하는 특성이 **'고위험-고수익(High-Risk)'** 점수 분포를 가지게 하는가?
 *   **Profiling:** 게임 내 전략이 내포한 수학적 위험도(Variance)와 기회비용의 정량적 프로파일링.
 
 ###  주요 기능
@@ -32,8 +32,8 @@
 | :--- | :--- | :--- |
 | **Mathematical Basis** | **Reliability-Seeking** <br> ($L^{CLIP}$ 통한 급격한 변화 억제) | **Optimistic Bias** <br> (Max Operator에 의한 가치 과대평가) |
 | **Risk Profile** | **Low Variance** (안정적 승리) | **High Variance** (모 아니면 도) |
-| **Value Estimation** | **Realistic** <br> (전황에 따라 가치가 민감하게 반응) | **Overestimation** <br> (패배 직전에도 승리를 확신) |
-| **Converged Strategy** | **Tier 2 중심의 엔진 빌딩** <br> 비용 대비 효율을 중시하며, <br>안정적으로 자원을 확보하는 정석 플레이 | **Tier 1 난사 + Tier 3/Noble 한방** <br> 값싼 카드로 칩을 모아, <br>고득점 카드를 노리는 기회주의적 플레이 |
+| **Value Estimation** | **Realistic** <br> (전황에 따라 가치가 민감하게 반응) | **Overestimation** <br> (패배 직전에도 승리할 수 있다는 낙관적 사고) |
+| **Converged Strategy** | **Tier 2 중심의 빌딩** <br> 비용 대비 효율을 중시하며, <br>안정적으로 자원을 확보하는 정석 플레이 | **Tier 1 + Tier 3/Noble ** <br> 값싼 카드로 칩을 모아, <br>고득점 카드를 노리는 기회주의적 플레이 |
 
 ---
 
