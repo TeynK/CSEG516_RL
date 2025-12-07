@@ -178,6 +178,7 @@ class Visualizer:
             self.plot_turn_distribution()
             self.plot_card_tier_analysis()
             self.plot_action_distribution()
+            self.plot_nobles_analysis()
             if not self.action_df.empty:
                 self.plot_turn_action_distribution(model_name="PPO")
                 self.plot_turn_action_distribution(model_name="DQN")
@@ -300,6 +301,36 @@ class Visualizer:
         plt.savefig(save_path)
         plt.close()
         print(f" - {model_name} 턴별 행동 그래프 저장됨: {save_path}")
+
+    def plot_nobles_analysis(self):
+        if 'PPO_nobles' not in self.df.columns: return
+        
+        # 데이터 변환 (Wide -> Long format)
+        # 예: game_id, Model(PPO/DQN), Nobles(개수) 형태로 변환해야 seaborn으로 그리기 편함
+        noble_df = self.df[['PPO_nobles', 'DQN_nobles']].melt(var_name='Model', value_name='Nobles')
+        
+        # 이름 정리 ('PPO_nobles' -> 'PPO')
+        noble_df['Model'] = noble_df['Model'].str.replace('_nobles', '')
+        
+        plt.figure(figsize=(10, 6))
+        
+        # Countplot: 각 에이전트가 귀족을 0개, 1개, 2개... 획득한 게임이 몇 판인지 보여줌
+        ax = sns.countplot(data=noble_df, x='Nobles', hue='Model', palette={'PPO': 'blue', 'DQN': 'red'})
+        
+        plt.title('Distribution of Nobles Acquired per Game')
+        plt.xlabel('Number of Nobles Acquired')
+        plt.ylabel('Game Count')
+        plt.legend(title='Agent')
+        
+        # 막대 위에 숫자 표시 (선택 사항)
+        for p in ax.patches:
+            height = p.get_height()
+            if height > 0:
+                ax.text(p.get_x() + p.get_width()/2., height + 0.1, int(height), ha="center")
+
+        save_path = os.path.join(self.save_dir, 'nobles_dist.png')
+        plt.savefig(save_path)
+        plt.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Evalute PPO vs DQN models")

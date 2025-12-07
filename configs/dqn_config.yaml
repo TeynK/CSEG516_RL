@@ -14,7 +14,7 @@ model_dir: "results/models/DQN"
 model_name: "DQN_vs_bot"
 
 # [학습 스케줄]
-total_timesteps: 2000000
+total_timesteps: 1000000
 save_interval: 1000000
 
 # [모델 하이퍼파라미터 (Custom MaskableDQN)]

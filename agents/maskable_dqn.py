@@ -63,6 +63,12 @@ class MaskableDQN(DQN):
         obs_tensor, _ = self.policy.obs_to_tensor(observation)
         mask_tensor = th.as_tensor(action_mask).to(self.device)
         
+        # [수정된 부분] 
+        # mask_tensor가 1차원(배치 차원이 없는 경우)이라면, (1, action_dim) 형태로 차원을 추가합니다.
+        # 이렇게 해야 아래의 sum(dim=1) 연산이 에러 없이 작동합니다.
+        if mask_tensor.dim() == 1:
+            mask_tensor = mask_tensor.unsqueeze(0)
+        
         with th.no_grad():
             q_values = self.policy.q_net(obs_tensor)
             masked_q_values = th.where(
@@ -74,6 +80,7 @@ class MaskableDQN(DQN):
 
         if not deterministic and np.random.rand() < self.exploration_rate:
             float_mask = mask_tensor.float()
+            # 이제 mask_tensor가 항상 2차원 이상이므로 안전하게 dim=1 연산 가능
             all_invalid_mask = (float_mask.sum(dim=1) == 0)
             safe_mask = float_mask.clone()
             safe_mask[all_invalid_mask, 0] = 1.0
