@@ -33,7 +33,7 @@
 | **Mathematical Basis** | **Reliability-Seeking** <br> ($L^{CLIP}$ 통한 급격한 변화 억제) | **Optimistic Bias** <br> (Max Operator에 의한 가치 과대평가) |
 | **Risk Profile** | **Low Variance** (안정적 승리) | **High Variance** (모 아니면 도) |
 | **Value Estimation** | **Realistic** <br> (전황에 따라 가치가 민감하게 반응) | **Overestimation** <br> (패배 직전에도 승리할 수 있다는 낙관적 사고) |
-| **Converged Strategy** | **Tier 2 중심의 빌딩** <br> 비용 대비 효율을 중시하며, <br>안정적으로 자원을 확보하는 정석 플레이 | **Tier 1 + Tier 3/Noble ** <br> 값싼 카드로 칩을 모아, <br>고득점 카드를 노리는 기회주의적 플레이 |
+| **Converged Strategy** | **Tier 2 중심의 빌딩** <br> 비용 대비 효율을 중시하며, <br>안정적으로 자원을 확보하는 정석 플레이 | **Tier 1 + Tier 3/Noble** <br> 값싼 카드로 칩을 모아, <br>고득점 카드를 노리는 기회주의적 플레이 |
 
 ---
 
